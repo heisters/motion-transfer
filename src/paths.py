@@ -7,6 +7,9 @@ def build_paths(args):
     paths.models_dir            = paths.root_dir / "models"
     paths.pose_prototxt         = paths.models_dir / "body_25_pose_deploy.prototxt"
     paths.pose_model            = paths.models_dir / "body_25_pose_iter_584000.caffemodel"
+    paths.densepose_base_cfg    = paths.models_dir / "Base-DensePose-RCNN-FPN.yaml"
+    paths.densepose_cfg         = paths.models_dir / "densepose_rcnn_R_101_FPN_DL_WC2_s1x.yaml"
+    paths.densepose_model       = paths.models_dir / "model_final_6e1ed1.pkl"
 
     paths.data_dir              = paths.root_dir / "data"
     paths.dataset_dir           = paths.data_dir / args.dataset
