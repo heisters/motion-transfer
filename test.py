@@ -2,7 +2,7 @@ import os
 import sys
 from collections import OrderedDict
 from torch.autograd import Variable
-sys.path.append('./vendor/pix2pixHD.git/')
+sys.path.append('./vendor/pix2pixHD/')
 from options.test_options import TestOptions
 from data.data_loader import CreateDataLoader
 from models.models import create_model

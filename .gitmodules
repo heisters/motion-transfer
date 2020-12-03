@@ -1,5 +1,5 @@
 [submodule "vendor/pix2pixHD.git"]
-	path = vendor/pix2pixHD.git
+	path = vendor/pix2pixHD
 	url = https://github.com/NVIDIA/pix2pixHD.git
 [submodule "vendor/detectron2"]
 	path = vendor/detectron2

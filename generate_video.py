@@ -10,7 +10,7 @@ import shutil
 from src.paths import build_paths
 
 # pix2pixHD imports
-sys.path.append('./vendor/pix2pixHD.git/')
+sys.path.append('./vendor/pix2pixHD/')
 from options.test_options import TestOptions
 from models.models import create_model
 from data.base_dataset import BaseDataset, get_params, get_transform, normalize

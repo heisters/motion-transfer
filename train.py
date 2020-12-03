@@ -9,7 +9,7 @@ from subprocess import call
 import fractions
 def lcm(a,b): return abs(a * b)/fractions.gcd(a,b) if a and b else 0
 
-sys.path.append('./vendor/pix2pixHD.git/')
+sys.path.append('./vendor/pix2pixHD/')
 
 from options.train_options import TrainOptions
 from data.data_loader import CreateDataLoader
