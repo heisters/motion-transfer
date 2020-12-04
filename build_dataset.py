@@ -4,8 +4,11 @@ import os
 import sys
 import argparse
 import cv2 as cv
+import dlib
 import wget
+import bz2
 import numpy as np
+from imutils import face_utils
 from tqdm import tqdm
 from pathlib import Path
 
@@ -37,10 +40,16 @@ def parse_arguments():
     p.add_argument('--source-from', help='Decimal seconds to start reading from source video', type=float, default=0.0)
     p.add_argument('--source-to', help='Decimal seconds to read until from source video, -1 for the end', type=float, default=-1.0)
     p.add_argument('--source-subsample', help='Factor to subsample the source frames, every Nth frame will be selected', type=int, default=1)
+    p.add_argument('--source-size', help='Resize source to the given size')
     p.add_argument('--target-from', help='Decimal seconds to start reading from target video', type=float, default=0.0)
     p.add_argument('--target-to', help='Decimal seconds to read until from target video, -1 for the end', type=float, default=-1.0)
     p.add_argument('--target-subsample', help='Factor to subsample the target frames, every Nth frame will be selected', type=int, default=1)
-    p.add_argument('--label-with', help="Choose labelling strategy", choices=["openpose", "densepose"], default="openpose")
+    p.add_argument('--target-size', help='Resize target to the given size')
+    p.add_argument('--label-with', help="Choose labelling strategy", choices=["openpose", "densepose"], default="densepose")
+    p.add_argument('--label-face', help="Choose labelling strategy", dest='label_face', action='store_true')
+    p.add_argument('--no-label-face', help="Choose labelling strategy", dest='label_face', action='store_false')
+
+    p.set_defaults(label_face=True)
 
     return p.parse_args()
 
@@ -49,7 +58,7 @@ def create_directories(paths):
         if k.endswith('_dir'):
             v.mkdir(exist_ok=True)
 
-def decimate_video(path, output_dir, limit=None, trim=(0.0, -1.0), subsample=1):
+def decimate_video(path, output_dir, limit=None, trim=(0.0, -1.0), subsample=1, resize=None):
     cap = cv.VideoCapture(str(path))
     if not cap.isOpened(): return
 
@@ -60,7 +69,7 @@ def decimate_video(path, output_dir, limit=None, trim=(0.0, -1.0), subsample=1):
     start_frame = int(fps * trim[0])
     end_frame = nframes if trim[1] < 0.0 else max(start_frame + 1, int(fps * trim[1]))
 
-    if (end_frame - start_frame) == len(os.listdir(str(output_dir))):
+    if (end_frame - start_frame) // subsample == len(os.listdir(str(output_dir))):
         print("Found %d frames, skipping." % (end_frame - start_frame))
         return
 
@@ -77,7 +86,7 @@ def decimate_video(path, output_dir, limit=None, trim=(0.0, -1.0), subsample=1):
             success, frame = cap.retrieve()
             if not success: break
 
-            #frame = cv.resize(frame, (int(frame.shape[1]), int(frame.shape[0])))
+            if resize is not None: frame = cv.resize(frame, resize, interpolation=cv.INTER_AREA)
             cv.imwrite(str(imgpath), frame)
 
 def get_model(name, path, url):
@@ -85,6 +94,10 @@ def get_model(name, path, url):
         print("%s OK: %s" % (name, path))
     else:
         wget.download(url, str(path))
+        if url.endswith(".bz2"):
+            z = bz2.BZ2File(str(path))
+            data = z.read()
+            open(str(path), 'wb').write(data)
 
 def get_models(paths):
     get_model("Pose model", paths.pose_model, "http://posefs1.perception.cs.cmu.edu/OpenPose/models/pose/body_25/pose_iter_584000.caffemodel")
@@ -92,6 +105,8 @@ def get_models(paths):
     get_model("Densepose base config", paths.densepose_base_cfg, "https://raw.githubusercontent.com/facebookresearch/detectron2/master/projects/DensePose/configs/Base-DensePose-RCNN-FPN.yaml")
     get_model("Denspose config", paths.densepose_cfg, "https://raw.githubusercontent.com/facebookresearch/detectron2/master/projects/DensePose/configs/densepose_rcnn_R_101_FPN_DL_WC2_s1x.yaml")
     get_model("Densepose model", paths.densepose_model, "https://dl.fbaipublicfiles.com/densepose/densepose_rcnn_R_101_FPN_DL_WC2_s1x/173294801/model_final_6e1ed1.pkl")
+    get_model("DLIB face landmarks", paths.dlib_face_landmarks, "http://dlib.net/files/shape_predictor_68_face_landmarks.dat.bz2")
+    get_model("DLIB CNN face detector", paths.dlib_face_detector, "http://dlib.net/files/mmod_human_face_detector.dat.bz2")
 
 
 def label_images(img_dir, label_dir):
@@ -151,18 +166,31 @@ def label_images_with_openpose(net, img_dir, label_dir):
 
             cv.imwrite(str(label_path), labels)
 
-def label_images_with_densepose(predictor, img_dir, label_dir):
+def label_images_with_densepose(pose_predictor, face_detector, face_predictor, img_dir, label_dir):
     gammut = np.append(np.arange(1, 256, 1, dtype=np.uint8), [255]).reshape(256, 1)
     cmap = np.dstack((gammut, gammut, gammut)).astype(np.uint8)
-    for image, image_path, label_path in label_images(img_dir, label_dir):
-            outputs = predictor(image)['instances']
-            visualizer = DensePoseMaskedColormapResultsVisualizer(_extract_i_from_iuvarr, _extract_i_from_iuvarr, cmap=cmap, alpha=1.0, val_scale=1.0)
-            extractor = create_extractor(visualizer)
-            data = extractor(outputs)
-            labels = np.zeros(image.shape, np.uint8)
-            visualizer.visualize(labels, data)
+    face_colors = [tuple(map(int, r[0])) for r in cmap[26:34]]
 
-            cv.imwrite(str(label_path), labels)
+    for image, image_path, label_path in label_images(img_dir, label_dir):
+        labels = np.zeros(image.shape, np.uint8)
+
+        # Pose detection
+        outputs = pose_predictor(image)['instances']
+        visualizer = DensePoseMaskedColormapResultsVisualizer(_extract_i_from_iuvarr, _extract_i_from_iuvarr, cmap=cmap, alpha=1.0, val_scale=1.0)
+        extractor = create_extractor(visualizer)
+        data = extractor(outputs)
+        visualizer.visualize(labels, data)
+
+        # Face detection
+        gray = cv.cvtColor(image, cv.COLOR_BGR2GRAY)
+        face_rects = face_detector(gray, 1)
+        for (i, rect) in enumerate(face_rects):
+            shape = face_predictor(gray, rect.rect)
+            shape = face_utils.shape_to_np(shape)
+
+            labels = face_utils.visualize_facial_landmarks(labels, shape, colors=face_colors, alpha=1.0)
+
+        cv.imwrite(str(label_path), labels)
 
 
 def make_labels_with_openpose(paths):
@@ -181,11 +209,16 @@ def make_labels_with_densepose(paths):
     cfg.merge_from_file(str(paths.densepose_cfg))
     cfg.MODEL.WEIGHTS = str(paths.densepose_model)
     cfg.freeze()
-    predictor = DefaultPredictor(cfg)
+    pose_predictor = DefaultPredictor(cfg)
+
+    face_detector = dlib.cnn_face_detection_model_v1(str(paths.dlib_face_detector))
+    face_predictor = dlib.shape_predictor(str(paths.dlib_face_landmarks))
+
+
     print("Labeling source")
-    label_images_with_densepose(predictor, paths.source_img_dir, paths.source_label_dir)
+    label_images_with_densepose(pose_predictor, face_detector, face_predictor, paths.source_img_dir, paths.source_label_dir)
     print("Labeling target")
-    label_images_with_densepose(predictor, paths.target_img_dir, paths.target_label_dir)
+    label_images_with_densepose(pose_predictor, face_detector, face_predictor, paths.target_img_dir, paths.target_label_dir)
 
 def make_labels(labeller, paths):
     if labeller == 'openpose':
@@ -203,14 +236,16 @@ paths.source = Path(args.source)
 paths.target = Path(args.target)
 
 
+source_size = tuple(map(int, args.source_size.split('x'))) if args.source_size is not None else None
+target_size = tuple(map(int, args.target_size.split('x'))) if args.target_size is not None else None
 
 print("Creating directory hierarchy")
 create_directories(paths)
 print("Fetching models")
 get_models(paths)
 print("Decimating source video")
-decimate_video(paths.source, paths.source_img_dir, trim=(args.source_from, args.source_to), subsample=args.source_subsample)
+decimate_video(paths.source, paths.source_img_dir, trim=(args.source_from, args.source_to), subsample=args.source_subsample, resize=source_size)
 print("Decimating target video")
-decimate_video(paths.target, paths.target_img_dir, trim=(args.target_from, args.target_to), subsample=args.target_subsample)
+decimate_video(paths.target, paths.target_img_dir, trim=(args.target_from, args.target_to), subsample=args.target_subsample, resize=target_size)
 print("Labeling frames with %s" % args.label_with)
 make_labels(args.label_with, paths)
