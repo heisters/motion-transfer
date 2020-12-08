@@ -56,7 +56,7 @@ dataset = data_loader.load_data()
 
 nframes = opt.how_many if opt.how_many is not None else len(dataset)
 duration_s = nframes / opt.fps
-video_id = "epoch-%s_%s_%.1f-s_%.1f-fps" % (
+video_id = "epoch-%s_%s_%ds_%dfps" % (
     str(opt.which_epoch),
     opt.name,
     duration_s,
@@ -64,9 +64,10 @@ video_id = "epoch-%s_%s_%.1f-s_%.1f-fps" % (
 )
 
 video_path = (paths.results_dir / video_id).with_suffix(".mp4")
-i = 1
+i = 0
 while video_path.exists():
-    video_path = video_path.with_name(video_id + ("-%d" % i)).with_suffix('.mp4')
+    i += 1
+    video_path = (paths.results_dir / (video_id + ("-%d" % (i)))).with_suffix(".mp4")
 frame_dir = video_path.with_suffix('')
 if frame_dir.exists(): shutil.rmtree(frame_dir)
 frame_dir.mkdir(parents=True, exist_ok=True)
