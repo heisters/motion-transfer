@@ -3,7 +3,7 @@
 import os
 import argparse
 import cv2 as cv
-from src.paths import build_paths
+from motion_transfer.paths import build_paths
 
 p = argparse.ArgumentParser(description="Visualize the labels generated for a frame")
 p.add_argument('-d', '--dataset', help='Name of the dataset', required=True)

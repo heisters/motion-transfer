@@ -1,0 +1,3 @@
+--label_nc=35
+--no_instance
+--fp16

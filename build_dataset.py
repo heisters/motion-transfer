@@ -24,7 +24,7 @@ from densepose import add_densepose_config, add_hrnet_config
 from densepose.vis.densepose_results import DensePoseMaskedColormapResultsVisualizer, _extract_i_from_iuvarr
 from densepose.vis.extractor import CompoundExtractor, DensePoseResultExtractor, create_extractor
 
-from src.paths import build_paths
+from motion_transfer.paths import build_paths
 
 
 
@@ -33,18 +33,13 @@ from src.paths import build_paths
 #
 
 def parse_arguments():
-    p = argparse.ArgumentParser(description="Transfer motion from a source video to a target video")
-    p.add_argument('-d', '--dataset', help='Name of the dataset', required=True)
-    p.add_argument('-s', '--source', help='Path to the source video', required=True)
-    p.add_argument('-t', '--target', help='Path to the target video', required=True)
-    p.add_argument('--source-from', help='Decimal seconds to start reading from source video', type=float, default=0.0)
-    p.add_argument('--source-to', help='Decimal seconds to read until from source video, -1 for the end', type=float, default=-1.0)
-    p.add_argument('--source-subsample', help='Factor to subsample the source frames, every Nth frame will be selected', type=int, default=1)
-    p.add_argument('--source-size', help='Resize source to the given size')
-    p.add_argument('--target-from', help='Decimal seconds to start reading from target video', type=float, default=0.0)
-    p.add_argument('--target-to', help='Decimal seconds to read until from target video, -1 for the end', type=float, default=-1.0)
-    p.add_argument('--target-subsample', help='Factor to subsample the target frames, every Nth frame will be selected', type=int, default=1)
-    p.add_argument('--target-size', help='Resize target to the given size')
+    p = argparse.ArgumentParser(description="Transfer motion from a source video to a target video", fromfile_prefix_chars='@')
+    p.add_argument('--dataroot', type=str)
+    p.add_argument('-i', '--input', help='Path to the video', required=True)
+    p.add_argument('--trim', help='Decimal, colon separated seconds to trim the input video to. -1 indicates the end of the video', type=str, default='0:-1')
+    p.add_argument('--subsample', help='Factor to subsample the source frames, every Nth frame will be selected', type=int, default=1)
+    p.add_argument('--resize', help='Resize source to the given size')
+    p.add_argument('--flip', help='Flip vertically, horizontally, or both', choices=['v', 'h', 'vh', 'hv'])
     p.add_argument('--label-with', help="Choose labelling strategy", choices=["openpose", "densepose"], default="densepose")
     p.add_argument('--label-face', help="Choose labelling strategy", dest='label_face', action='store_true')
     p.add_argument('--no-label-face', help="Choose labelling strategy", dest='label_face', action='store_false')
@@ -58,7 +53,7 @@ def create_directories(paths):
         if k.endswith('_dir'):
             v.mkdir(exist_ok=True)
 
-def decimate_video(path, output_dir, limit=None, trim=(0.0, -1.0), subsample=1, resize=None):
+def decimate_video(path, output_dir, limit=None, trim=(0.0, -1.0), subsample=1, resize=None, flip=None):
     cap = cv.VideoCapture(str(path))
     if not cap.isOpened(): return
 
@@ -87,6 +82,7 @@ def decimate_video(path, output_dir, limit=None, trim=(0.0, -1.0), subsample=1, 
             if not success: break
 
             if resize is not None: frame = cv.resize(frame, resize, interpolation=cv.INTER_AREA)
+            if flip is not None: frame = cv.flip(frame, flip)
             cv.imwrite(str(imgpath), frame)
 
 def get_model(name, path, url):
@@ -179,7 +175,10 @@ def label_images_with_densepose(pose_predictor, face_detector, face_predictor, i
         visualizer = DensePoseMaskedColormapResultsVisualizer(_extract_i_from_iuvarr, _extract_i_from_iuvarr, cmap=cmap, alpha=1.0, val_scale=1.0)
         extractor = create_extractor(visualizer)
         data = extractor(outputs)
-        visualizer.visualize(labels, data)
+        if data is not None and data[1] is not None:
+            visualizer.visualize(labels, data)
+        else:
+            print("No pose detected for frame {}".format(image_path))
 
         # Face detection
         gray = cv.cvtColor(image, cv.COLOR_BGR2GRAY)
@@ -197,10 +196,8 @@ def make_labels_with_openpose(paths):
     net = cv.dnn.readNetFromCaffe(str(paths.pose_prototxt), str(paths.pose_model))
     net.setPreferableBackend(cv.dnn.DNN_BACKEND_OPENCV)
     net.setPreferableTarget(cv.dnn.DNN_TARGET_OPENCL)
-    print("Labeling source")
-    label_images_with_openpose(net, paths.source_img_dir, paths.source_label_dir)
-    print("Labeling target")
-    label_images_with_openpose(net, paths.target_img_dir, paths.target_label_dir)
+    print("Labeling")
+    label_images_with_openpose(net, paths.train_img_dir, paths.train_label_dir)
 
 def make_labels_with_densepose(paths):
     cfg = get_cfg()
@@ -215,10 +212,8 @@ def make_labels_with_densepose(paths):
     face_predictor = dlib.shape_predictor(str(paths.dlib_face_landmarks))
 
 
-    print("Labeling source")
-    label_images_with_densepose(pose_predictor, face_detector, face_predictor, paths.source_img_dir, paths.source_label_dir)
-    print("Labeling target")
-    label_images_with_densepose(pose_predictor, face_detector, face_predictor, paths.target_img_dir, paths.target_label_dir)
+    print("Labeling")
+    label_images_with_densepose(pose_predictor, face_detector, face_predictor, paths.train_img_dir, paths.train_label_dir)
 
 def make_labels(labeller, paths):
     if labeller == 'openpose':
@@ -232,20 +227,18 @@ def make_labels(labeller, paths):
 
 args = parse_arguments()
 paths = build_paths(args)
-paths.source = Path(args.source)
-paths.target = Path(args.target)
+paths.input = Path(args.input)
 
 
-source_size = tuple(map(int, args.source_size.split('x'))) if args.source_size is not None else None
-target_size = tuple(map(int, args.target_size.split('x'))) if args.target_size is not None else None
+resize = tuple(map(int, args.resize.split('x'))) if args.resize is not None else None
+trim = tuple(map(float, args.trim.split(':'))) if args.trim is not None else None
+flip = {'v': 0, 'h': 1, 'hv': -1, 'vh': -1}[args.flip] if args.flip is not None else None
 
 print("Creating directory hierarchy")
 create_directories(paths)
 print("Fetching models")
 get_models(paths)
-print("Decimating source video")
-decimate_video(paths.source, paths.source_img_dir, trim=(args.source_from, args.source_to), subsample=args.source_subsample, resize=source_size)
-print("Decimating target video")
-decimate_video(paths.target, paths.target_img_dir, trim=(args.target_from, args.target_to), subsample=args.target_subsample, resize=target_size)
+print("Decimating")
+decimate_video(paths.input, paths.train_img_dir, trim=trim, subsample=args.subsample, resize=resize, flip=flip)
 print("Labeling frames with %s" % args.label_with)
 make_labels(args.label_with, paths)

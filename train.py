@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 import time
 import os
 import sys
@@ -9,9 +10,9 @@ from subprocess import call
 import fractions
 def lcm(a,b): return abs(a * b)/fractions.gcd(a,b) if a and b else 0
 
-sys.path.append('./vendor/pix2pixHD/')
+from motion_transfer.train_options import TrainOptions
 
-from options.train_options import TrainOptions
+sys.path.append('./vendor/pix2pixHD/')
 from data.data_loader import CreateDataLoader
 from models.models import create_model
 import util.util as util
@@ -71,7 +72,7 @@ for epoch in range(start_epoch, opt.niter + opt.niter_decay + 1):
 
         ############## Forward Pass ######################
         losses, generated = model(Variable(data['label']), Variable(data['inst']), 
-            Variable(data['image']), Variable(data['feat']), infer=save_fake)
+                                  Variable(data['image']), Variable(data['feat']), infer=save_fake)
 
         # sum per device losses
         losses = [ torch.mean(x) if not isinstance(x, int) else x for x in losses ]

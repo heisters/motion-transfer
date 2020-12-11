@@ -14,14 +14,14 @@ def build_paths(args):
     paths.dlib_face_detector    = paths.models_dir / "mmod_human_face_detector.dat"
 
 
-    paths.data_dir              = paths.root_dir / "data"
-    paths.dataset_dir           = paths.data_dir / args.dataset
-    paths.source_img_dir        = paths.dataset_dir / "source_img"
-    paths.source_label_dir      = paths.dataset_dir / "source_label"
-    paths.target_img_dir        = paths.dataset_dir / "train_img"
-    paths.target_label_dir      = paths.dataset_dir / "train_label"
+    paths.dataset_dir           = Path(args.dataroot)
+    paths.train_img_dir         = paths.dataset_dir / "train_img"
+    paths.train_label_dir       = paths.dataset_dir / "train_label"
 
-    if args.name is not None and args.results_dir is not None:
-        paths.results_dir           = paths.root_dir / args.results_dir / args.name
+    try:
+        if args.name is not None and args.results_dir is not None:
+            paths.results_dir   = paths.root_dir / args.results_dir / args.name
+    except AttributeError:
+        pass
 
     return paths
