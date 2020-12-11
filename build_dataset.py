@@ -41,10 +41,10 @@ def parse_arguments():
     p.add_argument('--resize', help='Resize source to the given size')
     p.add_argument('--flip', help='Flip vertically, horizontally, or both', choices=['v', 'h', 'vh', 'hv'])
     p.add_argument('--label-with', help="Choose labelling strategy", choices=["openpose", "densepose"], default="densepose")
-    p.add_argument('--label-face', help="Choose labelling strategy", dest='label_face', action='store_true')
-    p.add_argument('--no-label-face', help="Choose labelling strategy", dest='label_face', action='store_false')
+    #p.add_argument('--label-face', help="Choose labelling strategy", dest='label_face', action='store_true')
+    #p.add_argument('--no-label-face', help="Choose labelling strategy", dest='label_face', action='store_false')
 
-    p.set_defaults(label_face=True)
+    #p.set_defaults(label_face=True)
 
     return p.parse_args()
 
@@ -117,7 +117,23 @@ def label_images(img_dir, label_dir):
 
             yield image, image_path, label_path
 
-def label_images_with_openpose(net, img_dir, label_dir):
+def build_label_colormap():
+    gammut = np.append(np.arange(1, 256, 1, dtype=np.uint8), [255]).reshape(256, 1)
+    cmap = np.dstack((gammut, gammut, gammut)).astype(np.uint8)
+    return cmap
+
+def label_face(face_detector, face_predictor, image, labels, face_colors):
+    gray = cv.cvtColor(image, cv.COLOR_BGR2GRAY)
+    face_rects = face_detector(gray, 1)
+    for (i, rect) in enumerate(face_rects):
+        shape = face_predictor(gray, rect.rect)
+        shape = face_utils.shape_to_np(shape)
+
+        labels = face_utils.visualize_facial_landmarks(labels, shape, colors=face_colors, alpha=1.0)
+
+    return labels
+
+def label_images_with_openpose(net, face_detector, face_predictor, img_dir, label_dir):
     num_points = 25
     point_pairs = [[1, 0], [1, 2], [1, 5], 
                     [2, 3], [3, 4], [5, 6], 
@@ -129,46 +145,54 @@ def label_images_with_openpose(net, img_dir, label_dir):
                     [14, 19], [19, 20], [14, 21]]
     threshold = 0.1
 
+    cmap = build_label_colormap()
+    face_colors = [tuple(map(int, r[0])) for r in cmap[25:33]]
+
     for image, image_path, label_path in label_images(img_dir, label_dir):
-            iw = image.shape[1]
-            ih = image.shape[0]
-            size = (368,368)#(iw, ih) # others set this to (368, 368)
-            blob = cv.dnn.blobFromImage(image, 1.0 / 255.0, size, (0,0,0), swapRB=False, crop=False)
-            net.setInput(blob)
+        labels = np.zeros(image.shape, dtype=np.uint8)
 
-            output = net.forward()
-            ow = output.shape[3]
-            oh = output.shape[2]
+        # Pose detection
+        iw = image.shape[1]
+        ih = image.shape[0]
+        size = (368,368)#(iw, ih) # others set this to (368, 368)
+        blob = cv.dnn.blobFromImage(image, 1.0 / 255.0, size, (0,0,0), swapRB=False, crop=False)
+        net.setInput(blob)
 
-            labels = np.zeros((ih, iw), dtype=np.uint8)
+        output = net.forward()
+        ow = output.shape[3]
+        oh = output.shape[2]
 
-            points = []
-            for i in range(num_points):
-                confidence = output[0, i, :, :]
-                minval, prob, minloc, point = cv.minMaxLoc(confidence)
-                x = ( iw * point[0] ) / ow
-                y = ( ih * point[1] ) / oh
 
-                if prob > threshold:
-                    points.append((int(x), int(y)))
-                else:
-                    points.append(None)
+        points = []
+        for i in range(num_points):
+            confidence = output[0, i, :, :]
+            minval, prob, minloc, point = cv.minMaxLoc(confidence)
+            x = ( iw * point[0] ) / ow
+            y = ( ih * point[1] ) / oh
 
-            label = 1
-            for a, b in point_pairs:
-                if points[a] and points[b]:
-                    cv.line(labels, points[a], points[b], label, 3)
-                label += 1
+            if prob > threshold:
+                points.append((int(x), int(y)))
+            else:
+                points.append(None)
 
-            cv.imwrite(str(label_path), labels)
+        label = 1
+        for a, b in point_pairs:
+            if points[a] and points[b]:
+                cv.line(labels, points[a], points[b], label, 3)
+            label += 1
+
+        # Face detection
+        labels = label_face(face_detector, face_predictor, image, labels, face_colors)
+
+        cv.imwrite(str(label_path), labels)
+        break
 
 def label_images_with_densepose(pose_predictor, face_detector, face_predictor, img_dir, label_dir):
-    gammut = np.append(np.arange(1, 256, 1, dtype=np.uint8), [255]).reshape(256, 1)
-    cmap = np.dstack((gammut, gammut, gammut)).astype(np.uint8)
+    cmap = build_label_colormap()
     face_colors = [tuple(map(int, r[0])) for r in cmap[26:34]]
 
     for image, image_path, label_path in label_images(img_dir, label_dir):
-        labels = np.zeros(image.shape, np.uint8)
+        labels = np.zeros(image.shape, dtype=np.uint8)
 
         # Pose detection
         outputs = pose_predictor(image)['instances']
@@ -181,23 +205,24 @@ def label_images_with_densepose(pose_predictor, face_detector, face_predictor, i
             print("No pose detected for frame {}".format(image_path))
 
         # Face detection
-        gray = cv.cvtColor(image, cv.COLOR_BGR2GRAY)
-        face_rects = face_detector(gray, 1)
-        for (i, rect) in enumerate(face_rects):
-            shape = face_predictor(gray, rect.rect)
-            shape = face_utils.shape_to_np(shape)
-
-            labels = face_utils.visualize_facial_landmarks(labels, shape, colors=face_colors, alpha=1.0)
+        labels = label_face(face_detector, face_predictor, image, labels, face_colors)
 
         cv.imwrite(str(label_path), labels)
 
+
+def build_face_detector(paths):
+    face_detector = dlib.cnn_face_detection_model_v1(str(paths.dlib_face_detector))
+    face_predictor = dlib.shape_predictor(str(paths.dlib_face_landmarks))
+    return (face_detector, face_predictor)
 
 def make_labels_with_openpose(paths):
     net = cv.dnn.readNetFromCaffe(str(paths.pose_prototxt), str(paths.pose_model))
     net.setPreferableBackend(cv.dnn.DNN_BACKEND_OPENCV)
     net.setPreferableTarget(cv.dnn.DNN_TARGET_OPENCL)
-    print("Labeling")
-    label_images_with_openpose(net, paths.train_img_dir, paths.train_label_dir)
+
+    face_detector, face_predictor = build_face_detector(paths)
+
+    label_images_with_openpose(net, face_detector, face_predictor, paths.train_img_dir, paths.train_label_dir)
 
 def make_labels_with_densepose(paths):
     cfg = get_cfg()
@@ -208,11 +233,8 @@ def make_labels_with_densepose(paths):
     cfg.freeze()
     pose_predictor = DefaultPredictor(cfg)
 
-    face_detector = dlib.cnn_face_detection_model_v1(str(paths.dlib_face_detector))
-    face_predictor = dlib.shape_predictor(str(paths.dlib_face_landmarks))
+    face_detector, face_predictor = build_face_detector(paths)
 
-
-    print("Labeling")
     label_images_with_densepose(pose_predictor, face_detector, face_predictor, paths.train_img_dir, paths.train_label_dir)
 
 def make_labels(labeller, paths):
