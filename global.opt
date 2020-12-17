@@ -1,0 +1,4 @@
+--netG=global
+--fineSize=512
+--ngf=64
+--resize_or_crop=scale_width_and_crop
