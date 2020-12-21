@@ -72,9 +72,7 @@ for i, data in enumerate(tqdm(dataset)):
 video_from_frame_directory(
     frame_dir, 
     video_path, 
-    framerate=opt.fps, 
-    crop_to_720p=False,
-    reverse=False
+    framerate=opt.fps
 )
 
 print("video ready:\n%s" % video_path)

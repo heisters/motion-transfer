@@ -4,16 +4,14 @@ import cv2 as cv
 import os
 from tqdm import tqdm
 
-def video_from_frame_directory(frame_dir, video_path, frame_file_glob=r"frame-%05d.jpg", framerate=24, ffmpeg_verbosity=16, crop_to_720p=True, reverse=False):
+def video_from_frame_directory(frame_dir, video_path, frame_file_glob=r"frame-%05d.jpg", framerate=24, ffmpeg_verbosity=16):
     """Build a mp4 video from a directory frames
         note: crop_to_720p crops the top of 1280x736 images to get them to 1280x720
     """
-    command = """ffmpeg -v %d -framerate %d -i %s -ss 1 -q:v 2%s %s%s""" % (
+    command = """ffmpeg -v %d -framerate %d -f image2 -i %s -vcodec libx264 -crf 20 -pix_fmt yuv420p %s""" % (
         ffmpeg_verbosity,
         framerate,
         str(frame_dir / frame_file_glob),
-        ' -filter:v "crop=1280:720:0:16"' if crop_to_720p else "",
-        "-vf reverse " if reverse else "",
         video_path
     )
     print(command)
