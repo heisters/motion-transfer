@@ -18,5 +18,7 @@ class VideoOptions(BaseOptions):
         self.parser.add_argument("--engine", type=str, help="run serialized TRT engine")
         self.parser.add_argument("--onnx", type=str, help="run ONNX model via TRT")        
         self.parser.add_argument('--fps', type=float, default=24., help='frame per second for video generation')
+        self.parser.add_argument('--codec', choices=['x264', 'prores'], default='x264')
+        self.parser.add_argument('--output-suffix', type=str, help='Append the provided suffix to the output directory and file', default='')
         self.isTrain = False
 

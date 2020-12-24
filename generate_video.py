@@ -8,7 +8,7 @@ import shutil
 
 from motion_transfer.paths import build_paths
 from motion_transfer.video_options import VideoOptions
-from motion_transfer.video_utils import video_from_frame_directory
+from motion_transfer.video_utils import video_from_frame_directory, video_filename_for_codec, Codec
 
 # pix2pixHD imports
 sys.path.append('./vendor/pix2pixHD/')
@@ -28,32 +28,33 @@ opt.resize_or_crop = "none"
 
 paths = build_paths(opt)
 
+codec = Codec[opt.codec]
+
 data_loader = CreateDataLoader(opt)
 dataset = data_loader.load_data()
 
 
 nframes = opt.how_many if opt.how_many is not None else len(dataset)
 duration_s = nframes / opt.fps
-video_id = "epoch-%s_%s_%ds_%dfps" % (
+video_id = "epoch-%s_%s_%ds_%dfps%s" % (
     str(opt.which_epoch),
     opt.name,
     duration_s,
-    opt.fps
+    opt.fps,
+    opt.output_suffix
 )
 
-video_path = (paths.results_dir / video_id).with_suffix(".mp4")
-i = 0
-while video_path.exists():
-    i += 1
-    video_path = (paths.results_dir / (video_id + ("-%d" % (i)))).with_suffix(".mp4")
-frame_dir = video_path.with_suffix('')
-if frame_dir.exists(): shutil.rmtree(frame_dir)
+frame_dir = paths.results_dir / video_id
+video_path = video_filename_for_codec(paths.results_dir / video_id, codec)
 frame_dir.mkdir(parents=True, exist_ok=True)
 
 model = create_model(opt)
 
 
 for i, data in enumerate(tqdm(dataset)):
+    fn = frame_dir / ("frame-%s.png" % str(i + 1).zfill(5))
+    if fn.exists(): continue
+
     if opt.how_many is not None and i >= opt.how_many:
         break
     if opt.data_type == 16:
@@ -66,13 +67,15 @@ for i, data in enumerate(tqdm(dataset)):
     inferred = model.inference(data['label'], data['inst'], data['image'])
     img_nda = util.tensor2im(inferred.data[0])
     img_pil = Image.fromarray(img_nda)
-    img_pil.save(frame_dir / ("frame-%s.jpg" % str(i + 1).zfill(5)))
+    img_pil.save(fn)
 
 
-video_from_frame_directory(
-    frame_dir, 
-    video_path, 
-    framerate=opt.fps
-)
+if not video_path.exists():
+    video_from_frame_directory(
+        frame_dir, 
+        video_path, 
+        framerate=opt.fps,
+        codec=codec
+    )
 
 print("video ready:\n%s" % video_path)

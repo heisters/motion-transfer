@@ -3,15 +3,34 @@ import shlex
 import cv2 as cv
 import os
 from tqdm import tqdm
+from enum import Enum
 
-def video_from_frame_directory(frame_dir, video_path, frame_file_glob=r"frame-%05d.jpg", framerate=24, ffmpeg_verbosity=16):
+Codec = Enum('Codec', 'x264 prores')
+
+def video_filename_for_codec(path, codec):
+    if codec == Codec.x264:
+        return path.with_suffix('.mp4')
+    elif codec == Codec.prores:
+        return path.with_suffix('.mov')
+    else:
+        raise Exception('unrecognized codec: {}'.format(codec))
+
+
+def video_from_frame_directory(frame_dir, video_path, codec=Codec.x264, frame_file_glob=r"frame-%05d.png", framerate=24, ffmpeg_verbosity=16):
     """Build a mp4 video from a directory frames
-        note: crop_to_720p crops the top of 1280x736 images to get them to 1280x720
     """
-    command = """ffmpeg -v %d -framerate %d -f image2 -i %s -vcodec libx264 -crf 20 -pix_fmt yuv420p %s""" % (
+    if codec == Codec.x264:
+        encoding = '-vcodec libx264 -crf 20 -pix_fmt yuv420p'
+    elif codec == Codec.prores:
+        encoding = '-c:v prores_ks -profile:v 3 -pix_fmt yuv422p10le'
+    else:
+        raise Exception('unrecognized codec: {}'.format(codec))
+
+    command = """ffmpeg -v %d -framerate %d -f image2 -i %s %s %s""" % (
         ffmpeg_verbosity,
         framerate,
         str(frame_dir / frame_file_glob),
+        encoding,
         video_path
     )
     print(command)
@@ -19,7 +38,7 @@ def video_from_frame_directory(frame_dir, video_path, frame_file_glob=r"frame-%0
     p = subprocess.Popen(shlex.split(command), shell=False)
     p.communicate()
 
-def decimate_video(path, output_dir, limit=None, trim=(0.0, -1.0), subsample=1, resize=None, flip=None):
+def decimate_video(path, output_dir, limit=None, trim=(0.0, -1.0), subsample=1, subsample_offset=0, resize=None, flip=None):
     cap = cv.VideoCapture(str(path))
     if not cap.isOpened(): return
 
@@ -39,7 +58,7 @@ def decimate_video(path, output_dir, limit=None, trim=(0.0, -1.0), subsample=1, 
     for i in tqdm(range(end_frame - start_frame)):
         # do this here to increment frame counter, regardless of whether the file exists
         if not cap.grab(): break
-        if i % subsample != 0: continue
+        if (i + subsample_offset) % subsample != 0: continue
 
         imgpath = output_dir / '{:05}.png'.format(i)
 
