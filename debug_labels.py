@@ -20,8 +20,8 @@ args = p.parse_args()
 paths = build_paths(args)
 out = args.out + ('.mp4' if args.video else '.png')
 
-label_dir = paths.train_label_dir
-img_dir = paths.train_img_dir
+label_dir = paths.label_dir
+img_dir = paths.img_dir
 
 
 def overlay_label(img_path, label_path):
@@ -30,7 +30,7 @@ def overlay_label(img_path, label_path):
 
     label = cv.multiply(label, 255 / args.labels)
     colored = cv.applyColorMap(label, cv.COLORMAP_PARULA)
-    blended = cv.addWeighted(img, 0.5, colored, 0.5, 0)
+    blended = cv.addWeighted(img, 0.25, colored, 0.75, 0)
 
     return blended
 

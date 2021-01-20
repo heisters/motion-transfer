@@ -25,6 +25,7 @@ def parse_arguments():
     p.add_argument('--label-with', help="Choose labelling strategy", choices=["openpose", "densepose"], default="densepose")
     p.add_argument('--exclude-landmarks', help="CSV list of facial landmarks to exclude from the labels", type=str)
 
+    p.add_argument('--directory-prefix', help='Image and label directory prefixes for label training', default='train')
     p.add_argument('--no-label', help='Disable labeling', action='store_true')
     p.add_argument('--train-a', help="Put images in the train_A directory for non-label training", action='store_true')
     p.add_argument('--train-b', help="Put images in the train_B directory for non-label training", action='store_true')
@@ -61,7 +62,7 @@ create_directories(paths)
 print("Fetching models")
 fetch_models(paths)
 print("Decimating")
-decimate_video(paths.input, paths.train_img_dir, trim=trim, subsample=args.subsample, subsample_offset=args.subsample_offset, resize=resize, flip=flip)
+decimate_video(paths.input, paths.img_dir, trim=trim, subsample=args.subsample, subsample_offset=args.subsample_offset, resize=resize, flip=flip)
 if not args.no_label:
     print("Labeling frames with %s" % args.label_with)
     make_labels(args.label_with, paths, exclude_landmarks=exclude_landmarks)

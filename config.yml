@@ -1,0 +1,43 @@
+daria_hand_to_heni_portrait:
+        width: 1024
+        height: 576
+        labels: 0
+        data:
+                - source: ~/media/Daria_hand.MP4
+                  options:
+                          - train-a
+                - source: ~/media/Portrait-C0025_1.mp4
+                  options:
+                          - trim 0:94.1
+                          - train-b
+        train:
+                global:
+                        epochs: 14
+                local:
+                        epochs: 24
+        generate:
+                options:
+                        - codec prores
+heni_portrait:
+        width: 1024
+        height: 576
+        data:
+                - source: ~/media/PORTRAIT_C0021.mov
+                  options:
+                          - exclude-landmark jaw
+                - source: ~/media/daria_headshot.mp4
+                  name: daria_headshot
+                  options:
+                          - exclude-landmark jaw
+                          - directory-prefix test
+                          - flip vh
+        train:
+                global:
+                        epochs: 14
+                local:
+                        epochs: 20
+        generate:
+                data: daria_headshot
+                options:
+                        - codec prores
+                        - fps 30.03

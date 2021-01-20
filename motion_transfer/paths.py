@@ -15,17 +15,25 @@ def build_paths(args):
 
 
     paths.dataset_dir           = Path(args.dataroot)
-    paths.train_img_dir         = paths.dataset_dir / "train_img"
+    try:
+        paths.img_dir           = paths.dataset_dir / "{}_img".format(args.directory_prefix)
+    except AttributeError:
+        paths.img_dir           = paths.dataset_dir / "train_img"
+
     try:
         if args.train_a is True:
-            paths.train_img_dir = paths.dataset_dir / "train_A"
+            paths.img_dir = paths.dataset_dir / "train_A"
         elif args.train_b is True:
-            paths.train_img_dir = paths.dataset_dir / "train_B"
+            paths.img_dir = paths.dataset_dir / "train_B"
         elif args.test_a is True:
-            paths.train_img_dir = paths.dataset_dir / "test_A"
+            paths.img_dir = paths.dataset_dir / "test_A"
     except AttributeError:
         pass
-    paths.train_label_dir       = paths.dataset_dir / "train_label"
+
+    try:
+        paths.label_dir         = paths.dataset_dir / "{}_label".format(args.directory_prefix)
+    except AttributeError:
+        paths.label_dir         = paths.dataset_dir / "train_label"
 
     try:
         if args.name is not None and args.results_dir is not None:

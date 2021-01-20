@@ -201,7 +201,7 @@ def make_labels_with_openpose(paths, exclude_landmarks=None):
 
     face_detector = build_face_detector(paths, exclude_landmarks=exclude_landmarks)
 
-    label_images_with_openpose(net, face_detector, paths.train_img_dir, paths.train_label_dir)
+    label_images_with_openpose(net, face_detector, paths.img_dir, paths.label_dir)
 
 def make_labels_with_densepose(paths, exclude_landmarks=None):
     cfg = get_cfg()
@@ -214,7 +214,7 @@ def make_labels_with_densepose(paths, exclude_landmarks=None):
 
     face_detector = build_face_detector(paths, exclude_landmarks=exclude_landmarks)
 
-    label_images_with_densepose(pose_predictor, face_detector, paths.train_img_dir, paths.train_label_dir)
+    label_images_with_densepose(pose_predictor, face_detector, paths.img_dir, paths.label_dir)
 
 def make_labels(labeller, paths, exclude_landmarks=None):
     if labeller == 'openpose':
