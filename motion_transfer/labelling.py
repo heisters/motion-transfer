@@ -129,7 +129,8 @@ def label_images_with_openpose(net, face_detector, img_dir, label_dir):
     threshold = 0.1
 
     cmap = build_label_colormap()
-    face_colors = [tuple(map(int, r[0])) for r in cmap[num_points : num_points + len(landmarks)]]
+    if face_detector is not None:
+        face_colors = [tuple(map(int, r[0])) for r in cmap[num_points : num_points + len(landmarks)]]
 
     for image, image_path, label_path in label_images(img_dir, label_dir):
         labels = np.zeros(image.shape, dtype=np.uint8)
@@ -165,15 +166,16 @@ def label_images_with_openpose(net, face_detector, img_dir, label_dir):
             label += 1
 
         # Face detection
-        labels = label_face(face_detector, face_predictor, landmarks, image, labels, face_colors)
+        if face_detector is not None:
+            labels = label_face(face_detector, face_predictor, landmarks, image, labels, face_colors)
 
         cv.imwrite(str(label_path), labels)
-        break
 
 def label_images_with_densepose(pose_predictor, face_detector, img_dir, label_dir):
     cmap = build_label_colormap()
     face_detector, face_predictor, landmarks = face_detector
-    face_colors = [tuple(map(int, r[0])) for r in cmap[26 : 26 + len(landmarks)]]
+    if face_detector is not None:
+        face_colors = [tuple(map(int, r[0])) for r in cmap[26 : 26 + len(landmarks)]]
 
     for image, image_path, label_path in label_images(img_dir, label_dir):
         labels = np.zeros(image.shape, dtype=np.uint8)
@@ -189,21 +191,24 @@ def label_images_with_densepose(pose_predictor, face_detector, img_dir, label_di
             print("No pose detected for frame {}".format(image_path))
 
         # Face detection
-        labels = label_face(face_detector, face_predictor, landmarks, image, labels, face_colors)
+        if face_detector is not None:
+            labels = label_face(face_detector, face_predictor, landmarks, image, labels, face_colors)
 
         cv.imwrite(str(label_path), labels)
 
 
-def make_labels_with_openpose(paths, exclude_landmarks=None):
+def make_labels_with_openpose(paths, exclude_landmarks=None, label_face=True):
     net = cv.dnn.readNetFromCaffe(str(paths.pose_prototxt), str(paths.pose_model))
     net.setPreferableBackend(cv.dnn.DNN_BACKEND_OPENCV)
     net.setPreferableTarget(cv.dnn.DNN_TARGET_OPENCL)
 
-    face_detector = build_face_detector(paths, exclude_landmarks=exclude_landmarks)
+    face_detector = (None,None,None)
+    if label_face:
+        face_detector = build_face_detector(paths, exclude_landmarks=exclude_landmarks)
 
     label_images_with_openpose(net, face_detector, paths.img_dir, paths.label_dir)
 
-def make_labels_with_densepose(paths, exclude_landmarks=None):
+def make_labels_with_densepose(paths, exclude_landmarks=None, label_face=True):
     cfg = get_cfg()
     add_densepose_config(cfg)
     add_hrnet_config(cfg)
@@ -212,12 +217,14 @@ def make_labels_with_densepose(paths, exclude_landmarks=None):
     cfg.freeze()
     pose_predictor = DefaultPredictor(cfg)
 
-    face_detector = build_face_detector(paths, exclude_landmarks=exclude_landmarks)
+    face_detector = (None,None,None)
+    if label_face:
+        face_detector = build_face_detector(paths, exclude_landmarks=exclude_landmarks)
 
     label_images_with_densepose(pose_predictor, face_detector, paths.img_dir, paths.label_dir)
 
-def make_labels(labeller, paths, exclude_landmarks=None):
+def make_labels(labeller, paths, exclude_landmarks=None, label_face=True):
     if labeller == 'openpose':
-        make_labels_with_openpose(paths, exclude_landmarks=exclude_landmarks)
+        make_labels_with_openpose(paths, exclude_landmarks=exclude_landmarks, label_face=label_face)
     elif labeller == "densepose":
-        make_labels_with_densepose(paths, exclude_landmarks=exclude_landmarks)
+        make_labels_with_densepose(paths, exclude_landmarks=exclude_landmarks, label_face=label_face)

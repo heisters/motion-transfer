@@ -30,10 +30,10 @@ def parse_arguments():
     p.add_argument('--train-a', help="Put images in the train_A directory for non-label training", action='store_true')
     p.add_argument('--train-b', help="Put images in the train_B directory for non-label training", action='store_true')
     p.add_argument('--test-a', help="Put images in the test_A directory for non-label training", action='store_true')
-    #p.add_argument('--label-face', help="Choose labelling strategy", dest='label_face', action='store_true')
-    #p.add_argument('--no-label-face', help="Choose labelling strategy", dest='label_face', action='store_false')
+    p.add_argument('--label-face', help="Add labels for the face (default on)", dest='label_face', action='store_true')
+    p.add_argument('--no-label-face', help="Do not add labels for the face", dest='label_face', action='store_false')
 
-    #p.set_defaults(label_face=True)
+    p.set_defaults(label_face=True)
 
     return p.parse_args()
 
@@ -56,6 +56,7 @@ resize = tuple(map(int, args.resize.split('x'))) if args.resize is not None else
 trim = tuple(map(float, args.trim.split(':'))) if args.trim is not None else None
 flip = {'v': 0, 'h': 1, 'hv': -1, 'vh': -1}[args.flip] if args.flip is not None else None
 exclude_landmarks = set(args.exclude_landmarks.split(',')) if args.exclude_landmarks is not None else None
+label_face = args.label_face
 
 print("Creating directory hierarchy")
 create_directories(paths)
@@ -65,4 +66,4 @@ print("Decimating")
 decimate_video(paths.input, paths.img_dir, trim=trim, subsample=args.subsample, subsample_offset=args.subsample_offset, resize=resize, flip=flip)
 if not args.no_label:
     print("Labeling frames with %s" % args.label_with)
-    make_labels(args.label_with, paths, exclude_landmarks=exclude_landmarks)
+    make_labels(args.label_with, paths, exclude_landmarks=exclude_landmarks, label_face=label_face)
