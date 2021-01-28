@@ -4,9 +4,8 @@ import bz2
 import cv2 as cv
 import numpy as np
 from imutils import face_utils
-from tqdm import tqdm
 import sys
-import os
+from .paths import data_paths
 
 import detectron2
 from detectron2.utils.logger import setup_logger
@@ -41,17 +40,15 @@ def fetch_models(paths):
     fetch_model("DLIB CNN face detector", paths.dlib_face_detector, "http://dlib.net/files/mmod_human_face_detector.dat.bz2")
 
 
-def label_images(img_dir, label_dir):
-    for image_path_str in tqdm(os.listdir(str(img_dir))):
-        image_path = img_dir / image_path_str
-        label_path = label_dir / image_path.name
+def label_images(paths, normalize=False):
+    for image_path, label_path, norm_path in data_paths(paths, normalize=normalize):
 
-        if not label_path.exists():
+        if not label_path.exists() or ( normalize and norm_path is not None and not norm_path.exists() ):
             image = cv.imread(str(image_path))
             if image is None:
                 raise RuntimeError("Unable to read image: %s" % image_path)
 
-            yield image, image_path, label_path
+            yield image, image_path, label_path, norm_path
 
 def build_label_colormap():
     gammut = np.append(np.arange(1, 256, 1, dtype=np.uint8), [255]).reshape(256, 1)
@@ -115,8 +112,45 @@ def label_face(face_detector, face_predictor, landmarks, image, labels, face_col
 
     return labels
 
-def label_images_with_openpose(net, face_detector, img_dir, label_dir):
-    face_detector, face_predictor, landmarks = face_detector
+
+def make_labels_with_openpose(paths, exclude_landmarks=None, label_face=True, normalize=False):
+    net = cv.dnn.readNetFromCaffe(str(paths.pose_prototxt), str(paths.pose_model))
+    net.setPreferableBackend(cv.dnn.DNN_BACKEND_OPENCV)
+    net.setPreferableTarget(cv.dnn.DNN_TARGET_OPENCL)
+
+    face_detector, face_predictor, landmarks = (None,None,None)
+    if label_face:
+        face_detector, face_predictor, landmarks = build_face_detector(paths, exclude_landmarks=exclude_landmarks)
+
+
+    # from https://github.com/CMU-Perceptual-Computing-Lab/openpose/blob/master/doc/02_output.md
+    # {0,  "Nose"},
+    # {1,  "Neck"},
+    # {2,  "RShoulder"},
+    # {3,  "RElbow"},
+    # {4,  "RWrist"},
+    # {5,  "LShoulder"},
+    # {6,  "LElbow"},
+    # {7,  "LWrist"},
+    # {8,  "MidHip"},
+    # {9,  "RHip"},
+    # {10, "RKnee"},
+    # {11, "RAnkle"},
+    # {12, "LHip"},
+    # {13, "LKnee"},
+    # {14, "LAnkle"},
+    # {15, "REye"},
+    # {16, "LEye"},
+    # {17, "REar"},
+    # {18, "LEar"},
+    # {19, "LBigToe"},
+    # {20, "LSmallToe"},
+    # {21, "LHeel"},
+    # {22, "RBigToe"},
+    # {23, "RSmallToe"},
+    # {24, "RHeel"},
+    # {25, "Background"}
+
     num_points = 25
     point_pairs = [[1, 0], [1, 2], [1, 5], 
                     [2, 3], [3, 4], [5, 6], 
@@ -132,7 +166,7 @@ def label_images_with_openpose(net, face_detector, img_dir, label_dir):
     if face_detector is not None:
         face_colors = [tuple(map(int, r[0])) for r in cmap[num_points : num_points + len(landmarks)]]
 
-    for image, image_path, label_path in label_images(img_dir, label_dir):
+    for image, image_path, label_path, norm_path in label_images(paths, normalize=normalize):
         labels = np.zeros(image.shape, dtype=np.uint8)
 
         # Pose detection
@@ -159,6 +193,7 @@ def label_images_with_openpose(net, face_detector, img_dir, label_dir):
             else:
                 points.append(None)
 
+        # labelling
         label = 1
         for a, b in point_pairs:
             if points[a] and points[b]:
@@ -171,13 +206,34 @@ def label_images_with_openpose(net, face_detector, img_dir, label_dir):
 
         cv.imwrite(str(label_path), labels)
 
-def label_images_with_densepose(pose_predictor, face_detector, img_dir, label_dir):
+        # normalization data
+        if norm_path is not None:
+            np.save(norm_path, np.array(points))
+
+
+def make_labels_with_densepose(paths, exclude_landmarks=None, label_face=True, normalize=False):
+    if normalize:
+        raise NotImplementedError("Normalization is not yet supported with the densepose labeller")
+
+
+    cfg = get_cfg()
+    add_densepose_config(cfg)
+    add_hrnet_config(cfg)
+    cfg.merge_from_file(str(paths.densepose_cfg))
+    cfg.MODEL.WEIGHTS = str(paths.densepose_model)
+    cfg.freeze()
+    pose_predictor = DefaultPredictor(cfg)
+
+    face_detector, face_predictor, landmarks = (None,None,None)
+    if label_face:
+        face_detector, face_predictor, landmarks = build_face_detector(paths, exclude_landmarks=exclude_landmarks)
+
     cmap = build_label_colormap()
-    face_detector, face_predictor, landmarks = face_detector
+
     if face_detector is not None:
         face_colors = [tuple(map(int, r[0])) for r in cmap[26 : 26 + len(landmarks)]]
 
-    for image, image_path, label_path in label_images(img_dir, label_dir):
+    for image, image_path, label_path, _ in label_images(paths):
         labels = np.zeros(image.shape, dtype=np.uint8)
 
         # Pose detection
@@ -196,35 +252,8 @@ def label_images_with_densepose(pose_predictor, face_detector, img_dir, label_di
 
         cv.imwrite(str(label_path), labels)
 
-
-def make_labels_with_openpose(paths, exclude_landmarks=None, label_face=True):
-    net = cv.dnn.readNetFromCaffe(str(paths.pose_prototxt), str(paths.pose_model))
-    net.setPreferableBackend(cv.dnn.DNN_BACKEND_OPENCV)
-    net.setPreferableTarget(cv.dnn.DNN_TARGET_OPENCL)
-
-    face_detector = (None,None,None)
-    if label_face:
-        face_detector = build_face_detector(paths, exclude_landmarks=exclude_landmarks)
-
-    label_images_with_openpose(net, face_detector, paths.img_dir, paths.label_dir)
-
-def make_labels_with_densepose(paths, exclude_landmarks=None, label_face=True):
-    cfg = get_cfg()
-    add_densepose_config(cfg)
-    add_hrnet_config(cfg)
-    cfg.merge_from_file(str(paths.densepose_cfg))
-    cfg.MODEL.WEIGHTS = str(paths.densepose_model)
-    cfg.freeze()
-    pose_predictor = DefaultPredictor(cfg)
-
-    face_detector = (None,None,None)
-    if label_face:
-        face_detector = build_face_detector(paths, exclude_landmarks=exclude_landmarks)
-
-    label_images_with_densepose(pose_predictor, face_detector, paths.img_dir, paths.label_dir)
-
-def make_labels(labeller, paths, exclude_landmarks=None, label_face=True):
+def make_labels(labeller, paths, exclude_landmarks=None, label_face=True, normalize=False):
     if labeller == 'openpose':
-        make_labels_with_openpose(paths, exclude_landmarks=exclude_landmarks, label_face=label_face)
+        make_labels_with_openpose(paths, exclude_landmarks=exclude_landmarks, label_face=label_face, normalize=normalize)
     elif labeller == "densepose":
-        make_labels_with_densepose(paths, exclude_landmarks=exclude_landmarks, label_face=label_face)
+        make_labels_with_densepose(paths, exclude_landmarks=exclude_landmarks, label_face=label_face, normalize=normalize)

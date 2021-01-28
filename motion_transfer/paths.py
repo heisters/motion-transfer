@@ -1,8 +1,14 @@
 from types import SimpleNamespace
 from pathlib import Path
+from tqdm import tqdm
+import os
 
-def build_paths(args):
+def build_paths(args, directory_prefix=None):
     paths = SimpleNamespace(root_dir = Path("./"))
+    try:
+        if directory_prefix is None: directory_prefix = args.directory_prefix
+    except AttributeError:
+        pass
 
     paths.models_dir            = paths.root_dir / "models"
     paths.pose_prototxt         = paths.models_dir / "body_25_pose_deploy.prototxt"
@@ -16,7 +22,7 @@ def build_paths(args):
 
     paths.dataset_dir           = Path(args.dataroot)
     try:
-        paths.img_dir           = paths.dataset_dir / "{}_img".format(args.directory_prefix)
+        paths.img_dir           = paths.dataset_dir / "{}_img".format(directory_prefix)
     except AttributeError:
         paths.img_dir           = paths.dataset_dir / "train_img"
 
@@ -31,9 +37,14 @@ def build_paths(args):
         pass
 
     try:
-        paths.label_dir         = paths.dataset_dir / "{}_label".format(args.directory_prefix)
+        paths.label_dir         = paths.dataset_dir / "{}_label".format(directory_prefix)
     except AttributeError:
         paths.label_dir         = paths.dataset_dir / "train_label"
+
+    try:
+        paths.norm_dir          = paths.dataset_dir / "{}_norm".format(directory_prefix)
+    except AttributeError:
+        paths.norm_dir          = paths.dataset_dir / "train_norm"
 
     try:
         if args.name is not None and args.results_dir is not None:
@@ -42,3 +53,17 @@ def build_paths(args):
         pass
 
     return paths
+
+def data_paths(paths, normalize=False):
+    img_dir = paths.img_dir
+    label_dir = paths.label_dir
+    norm_dir = paths.norm_dir
+
+    for image_path_str in tqdm(os.listdir(str(img_dir))):
+        image_path = img_dir / image_path_str
+        label_path = label_dir / image_path.name
+        norm_path = None
+        if norm_dir is not None and normalize:
+            norm_path = norm_dir / image_path.with_suffix('.npy').name
+
+        yield image_path, label_path, norm_path
