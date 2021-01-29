@@ -5,10 +5,12 @@ import os
 
 def build_paths(args, directory_prefix=None):
     paths = SimpleNamespace(root_dir = Path("./"))
-    try:
-        if directory_prefix is None: directory_prefix = args.directory_prefix
-    except AttributeError:
-        pass
+
+    if directory_prefix is None:
+        try:
+            directory_prefix = args.directory_prefix
+        except AttributeError:
+            directory_prefix = 'train'
 
     paths.models_dir            = paths.root_dir / "models"
     paths.pose_prototxt         = paths.models_dir / "body_25_pose_deploy.prototxt"
@@ -21,10 +23,7 @@ def build_paths(args, directory_prefix=None):
 
 
     paths.dataset_dir           = Path(args.dataroot)
-    try:
-        paths.img_dir           = paths.dataset_dir / "{}_img".format(directory_prefix)
-    except AttributeError:
-        paths.img_dir           = paths.dataset_dir / "train_img"
+    paths.img_dir               = paths.dataset_dir / "{}_img".format(directory_prefix)
 
     try:
         if args.train_a is True:
@@ -36,15 +35,11 @@ def build_paths(args, directory_prefix=None):
     except AttributeError:
         pass
 
-    try:
-        paths.label_dir         = paths.dataset_dir / "{}_label".format(directory_prefix)
-    except AttributeError:
-        paths.label_dir         = paths.dataset_dir / "train_label"
+    paths.label_dir             = paths.dataset_dir / "{}_label".format(directory_prefix)
 
-    try:
-        paths.norm_dir          = paths.dataset_dir / "{}_norm".format(directory_prefix)
-    except AttributeError:
-        paths.norm_dir          = paths.dataset_dir / "train_norm"
+    paths.norm_dir              = paths.dataset_dir / "{}_norm".format(directory_prefix)
+    paths.denorm_label_dir      = paths.dataset_dir / "{}_denorm_label".format(directory_prefix)
+    paths.norm_calculations     = paths.norm_dir / "calculations.npy"
 
     try:
         if args.name is not None and args.results_dir is not None:
@@ -53,6 +48,12 @@ def build_paths(args, directory_prefix=None):
         pass
 
     return paths
+
+def create_directories(paths):
+    for k, v in vars(paths).items():
+        if k.endswith('_dir') and k != 'denorm_label_dir':
+            v.mkdir(exist_ok=True)
+
 
 def data_paths(paths, normalize=False):
     img_dir = paths.img_dir

@@ -15,6 +15,7 @@ p.add_argument('-f', '--frame', help='Frame number to visualize, defaults to the
 p.add_argument('-v', '--video', help='Generate a video including all frames', action='store_true')
 p.add_argument('-o', '--out', help='Output filename basename', default='debug_label')
 p.add_argument('-l', '--labels', help='The number of labels to visualize', type=int, default=35)
+p.add_argument('--directory-prefix', help='Image and label directory prefixes for label training', default='train')
 
 args = p.parse_args()
 paths = build_paths(args)

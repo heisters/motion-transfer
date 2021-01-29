@@ -2,8 +2,9 @@
 
 import argparse
 from pathlib import Path
+import os
 
-from motion_transfer.paths import build_paths
+from motion_transfer.paths import build_paths, create_directories
 from motion_transfer.video_utils import decimate_video
 from motion_transfer.labelling import fetch_models, make_labels
 
@@ -38,11 +39,6 @@ def parse_arguments():
 
     return p.parse_args()
 
-def create_directories(paths):
-    for k, v in vars(paths).items():
-        if k.endswith('_dir'):
-            v.mkdir(exist_ok=True)
-
 
 #
 # Setup
@@ -68,4 +64,9 @@ print("Decimating")
 decimate_video(paths.input, paths.img_dir, trim=trim, subsample=args.subsample, subsample_offset=args.subsample_offset, resize=resize, flip=flip)
 if not args.no_label:
     print("Labeling frames with %s" % args.label_with)
-    make_labels(args.label_with, paths, exclude_landmarks=exclude_landmarks, label_face=label_face, normalize=normalize)
+
+    nimgs = len(os.listdir(paths.img_dir))
+    if (len(os.listdir(paths.label_dir)) >= nimgs or (normalize and len(os.listdir(paths.denorm_label_dir)) >= nimgs)) and (not normalize or len(os.listdir(paths.norm_dir)) >= nimgs):
+        print("{} labels found, skipping.".format(nimgs))
+    else:
+        make_labels(args.label_with, paths, exclude_landmarks=exclude_landmarks, label_face=label_face, normalize=normalize)

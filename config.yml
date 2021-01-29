@@ -52,12 +52,11 @@ mt_daria2_heni3:
                           - no-label-face
                           - trim 0:60
                           - directory-prefix test
-                          - normalize
                 - source: ~/media/target_heni_3.MP4
                   options:
                           - label-with openpose
                           - no-label-face
-                          - normalize
+        normalize: true
         train:
                 global:
                         epochs: 4

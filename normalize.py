@@ -4,10 +4,17 @@ import argparse
 import numpy as np
 import math
 from scipy import stats
+from PIL import Image
 import sys
+import os
+import shutil
+import cv2 as cv
 
 from motion_transfer.paths import build_paths, data_paths
+from motion_transfer.labelling import draw_openpose_labels, pose_point_is_valid
 
+def isinvalid(p):
+    return not pose_point_is_valid(p)
 
 def parse_arguments():
     p = argparse.ArgumentParser(description="Normalize source video labels to the space of the target video")
@@ -18,28 +25,36 @@ def parse_arguments():
     p.add_argument('--dry-run', help="Print calculated statistics and quit", action="store_true")
     return p.parse_args()
 
-def calculate_metrics_for_pose(points):
-    idx_lankle = 14
-    idx_rankle = 11
-    idx_nose = 0
-    idx_neck = 1
-    idx_hip = 8
+idx_lankle = 14
+idx_rankle = 11
+idx_nose = 0
+idx_neck = 1
+idx_hip = 8
 
+def calculate_mean_ankle_for_pose(points):
     lankle = points[idx_lankle]
     rankle = points[idx_rankle]
+
+    if isinvalid(lankle) or isinvalid(rankle):
+        return np.array([-1,-1])
+
+    lankle = np.array(lankle)
+    rankle = np.array(rankle)
+
+    return (lankle + rankle) / 2.0
+
+def calculate_metrics_for_pose(points):
+
     nose = points[idx_nose]
     neck = points[idx_neck]
     hip = points[idx_hip]
+    mean_ankle = calculate_mean_ankle_for_pose(points)
 
-    if nose is None or lankle is None or rankle is None or hip is None or neck is None:
+    if isinvalid(nose) or isinvalid(mean_ankle) or isinvalid(hip) or isinvalid(neck):
         return None
 
 
     nose = np.array(nose)
-    lankle = np.array(lankle)
-    rankle = np.array(rankle)
-
-    mean_ankle = ( lankle + rankle ) / 2.0
 
     # do not consider poses where the body is inverted, even partially
     yvalues = [nose[1], neck[1], hip[1], mean_ankle[1]]
@@ -54,7 +69,7 @@ def calculate_metrics(paths, limit=None):
     ankles, noses, heights, images = [], [], [], []
 
     for i, (image_path, label_path, norm_path) in enumerate(data_paths(paths, normalize=True)):
-        points = np.load(norm_path, allow_pickle=True)
+        points = np.load(norm_path)
         metric = calculate_metrics_for_pose(points)
 
         if metric is not None:
@@ -111,11 +126,22 @@ args = parse_arguments()
 source_paths = build_paths(args, directory_prefix='test')
 target_paths = build_paths(args, directory_prefix='train')
 
-s_ankles, s_noses, s_heights, s_images = calculate_metrics(source_paths, limit=args.limit)
-t_ankles, t_noses, t_heights, t_images = calculate_metrics(target_paths, limit=args.limit)
+if source_paths.norm_calculations.exists():
+    print("Loading normalization calculations from {}".format(source_paths.norm_calculations))
+    calculations = np.load(source_paths.norm_calculations)
+else:
+    s_ankles, s_noses, s_heights, s_images = calculate_metrics(source_paths, limit=args.limit)
+    t_ankles, t_noses, t_heights, t_images = calculate_metrics(target_paths, limit=args.limit)
 
-s_close_ankle, s_close_height, s_far_ankle, s_far_height, s_win, s_thrsh = calculate_close_and_far_transformations(s_ankles, s_noses, s_heights, window=args.window, zthreshold=args.zthreshold)
-t_close_ankle, t_close_height, t_far_ankle, t_far_height, t_win, t_thrsh = calculate_close_and_far_transformations(t_ankles, t_noses, t_heights, window=args.window, zthreshold=args.zthreshold)
+    s_calc = calculate_close_and_far_transformations(s_ankles, s_noses, s_heights, window=args.window, zthreshold=args.zthreshold)
+    t_calc = calculate_close_and_far_transformations(t_ankles, t_noses, t_heights, window=args.window, zthreshold=args.zthreshold)
+    calculations = [s_calc, t_calc]
+
+    if not args.dry_run:
+        np.save(source_paths.norm_calculations, np.array(calculations, dtype=np.float))
+
+s_close_ankle, s_close_height, s_far_ankle, s_far_height, s_win, s_thrsh = calculations[0]
+t_close_ankle, t_close_height, t_far_ankle, t_far_height, t_win, t_thrsh = calculations[1]
 
 if args.dry_run:
     print("Source close\tankle: {:.2f}\theight: {:.2f}".format(s_close_ankle, s_close_height))
@@ -125,13 +151,56 @@ if args.dry_run:
     print("Target far\tankle: {:.2f}\theight: {:.2f}".format(t_far_ankle, t_far_height))
     print("Target params\twin: {:.2f}\tz-threshold: {:.2f}".format(t_win, t_thrsh))
 
-    #print("s_close:")
-    #print(" ".join(s_images[s_heights == s_close_height]))
-    #print("s_far:")
-    #print(" ".join(s_images[s_heights == s_far_height]))
-    #print("t_close:")
-    #print(" ".join(t_images[t_heights == s_close_height]))
-    #print("t_far:")
-    #print(" ".join(t_images[t_heights == s_far_height]))
     sys.exit()
 
+
+
+
+prev_y = -1
+scale_close = t_close_height / s_close_height
+scale_far = t_far_height / s_far_height
+scale_diff = scale_close - scale_far
+s_ankle_diff = s_close_ankle - s_far_ankle
+t_ankle_diff = t_close_ankle - t_far_ankle
+
+if not source_paths.denorm_label_dir.exists():
+    print("Moving denormalized source labels to {}".format(source_paths.denorm_label_dir))
+    shutil.move(str(source_paths.label_dir), str(source_paths.denorm_label_dir))
+
+source_paths.label_dir.mkdir(exist_ok=True)
+
+if len(os.listdir(source_paths.label_dir)) == len(os.listdir(source_paths.denorm_label_dir)):
+    print("{} normalized labels found, skipping normalization", len(os.listdir(source_paths.label_dir)))
+
+else:
+    for i, (image_path, label_path, norm_path) in enumerate(data_paths(source_paths, normalize=True)):
+        if label_path.exists():
+            continue
+
+        points = np.load(norm_path)
+
+        mean_ankle = calculate_mean_ankle_for_pose(points)
+        y = prev_y if isinvalid(mean_ankle) else mean_ankle[1]
+
+        if y == -1:
+            origin = np.array([0,0])
+            scale = 1
+            tx = 0
+        else:
+            prev_y = y
+            origin = mean_ankle
+            a = (y - s_far_ankle) / s_ankle_diff
+            scale = scale_far + a * scale_diff
+            tx = np.array([origin[0], t_far_ankle + a * t_ankle_diff], dtype=float)
+
+
+        points = np.where(points >= 0, (points - origin) * scale + tx, points)
+
+        with Image.open(str(image_path)) as img:
+            w, h = img.size
+
+        labels = np.zeros((h, w, 3), dtype=np.uint8)
+
+        draw_openpose_labels(labels, points.round().astype(np.int32))
+
+        cv.imwrite(str(label_path), labels)

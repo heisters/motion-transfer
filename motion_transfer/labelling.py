@@ -113,6 +113,23 @@ def label_face(face_detector, face_predictor, landmarks, image, labels, face_col
     return labels
 
 
+def pose_point_is_valid(point):
+    return (point >= 0).all()
+
+def draw_openpose_labels(cvimg, points):
+    point_pairs = [[1, 0], [1, 2], [1, 5], 
+                    [2, 3], [3, 4], [5, 6], 
+                    [6, 7], [0, 15], [15, 17], 
+                    [0, 16], [16, 18], [1, 8],
+                    [8, 9], [9, 10], [10, 11], 
+                    [11, 22], [22, 23], [11, 24],
+                    [8, 12], [12, 13], [13, 14], 
+                    [14, 19], [19, 20], [14, 21]]
+
+    for label, (a, b) in enumerate(point_pairs, start=1):
+        if pose_point_is_valid(points[a]) and pose_point_is_valid(points[b]):
+            cv.line(cvimg, tuple(points[a]), tuple(points[b]), label, 3)
+
 def make_labels_with_openpose(paths, exclude_landmarks=None, label_face=True, normalize=False):
     net = cv.dnn.readNetFromCaffe(str(paths.pose_prototxt), str(paths.pose_model))
     net.setPreferableBackend(cv.dnn.DNN_BACKEND_OPENCV)
@@ -152,14 +169,6 @@ def make_labels_with_openpose(paths, exclude_landmarks=None, label_face=True, no
     # {25, "Background"}
 
     num_points = 25
-    point_pairs = [[1, 0], [1, 2], [1, 5], 
-                    [2, 3], [3, 4], [5, 6], 
-                    [6, 7], [0, 15], [15, 17], 
-                    [0, 16], [16, 18], [1, 8],
-                    [8, 9], [9, 10], [10, 11], 
-                    [11, 22], [22, 23], [11, 24],
-                    [8, 12], [12, 13], [13, 14], 
-                    [14, 19], [19, 20], [14, 21]]
     threshold = 0.1
 
     cmap = build_label_colormap()
@@ -189,16 +198,12 @@ def make_labels_with_openpose(paths, exclude_landmarks=None, label_face=True, no
             y = ( ih * point[1] ) / oh
 
             if prob > threshold:
-                points.append((int(x), int(y)))
+                points.append([int(x), int(y)])
             else:
-                points.append(None)
+                points.append([-1, -1])
 
         # labelling
-        label = 1
-        for a, b in point_pairs:
-            if points[a] and points[b]:
-                cv.line(labels, points[a], points[b], label, 3)
-            label += 1
+        draw_openpose_labels(labels, points)
 
         # Face detection
         if face_detector is not None:
@@ -208,7 +213,7 @@ def make_labels_with_openpose(paths, exclude_landmarks=None, label_face=True, no
 
         # normalization data
         if norm_path is not None:
-            np.save(norm_path, np.array(points))
+            np.save(norm_path, np.array(points, dtype=np.int32))
 
 
 def make_labels_with_densepose(paths, exclude_landmarks=None, label_face=True, normalize=False):
