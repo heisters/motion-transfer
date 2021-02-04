@@ -66,7 +66,7 @@ if not args.no_label:
     print("Labeling frames with %s" % args.label_with)
 
     nimgs = len(os.listdir(paths.img_dir))
-    if (len(os.listdir(paths.label_dir)) >= nimgs or (normalize and len(os.listdir(paths.denorm_label_dir)) >= nimgs)) and (not normalize or len(os.listdir(paths.norm_dir)) >= nimgs):
+    if (len(os.listdir(paths.label_dir)) >= nimgs or (normalize and paths.denorm_label_dir.exists() and len(os.listdir(paths.denorm_label_dir)) >= nimgs)) and (not normalize or len(os.listdir(paths.norm_dir)) >= nimgs):
         print("{} labels found, skipping.".format(nimgs))
     else:
         make_labels(args.label_with, paths, exclude_landmarks=exclude_landmarks, label_face=label_face, normalize=normalize)

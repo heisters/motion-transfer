@@ -42,15 +42,14 @@ heni_portrait:
                         - codec prores
                         - fps 30.03
 mt_daria2_heni3:
-        width: 512
-        height: 288
+        width: 1024
+        height: 576
         labels: 26
         data:
                 - source: ~/media/source_daria_2_trimmed.mov
                   options:
                           - label-with openpose
                           - no-label-face
-                          - trim 0:60
                           - directory-prefix test
                 - source: ~/media/target_heni_3.MP4
                   options:
@@ -59,15 +58,13 @@ mt_daria2_heni3:
         normalize: true
         train:
                 global:
-                        epochs: 4
+                        epochs: 6
                         options:
                                 - no_flip
-                                - batchSize 2
                 local: 
                         epochs: 20
                         options:
                                 - no_flip
-                                - batchSize 2
         generate:
                 options:
                         - codec prores

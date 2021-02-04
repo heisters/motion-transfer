@@ -132,8 +132,8 @@ def draw_openpose_labels(cvimg, points):
 
 def make_labels_with_openpose(paths, exclude_landmarks=None, label_face=True, normalize=False):
     net = cv.dnn.readNetFromCaffe(str(paths.pose_prototxt), str(paths.pose_model))
-    net.setPreferableBackend(cv.dnn.DNN_BACKEND_OPENCV)
-    net.setPreferableTarget(cv.dnn.DNN_TARGET_OPENCL)
+    net.setPreferableBackend(cv.dnn.DNN_BACKEND_CUDA)
+    net.setPreferableTarget(cv.dnn.DNN_TARGET_CUDA)
 
     face_detector, face_predictor, landmarks = (None,None,None)
     if label_face:
@@ -202,6 +202,8 @@ def make_labels_with_openpose(paths, exclude_landmarks=None, label_face=True, no
             else:
                 points.append([-1, -1])
 
+        points = np.array(points, dtype=np.int32)
+
         # labelling
         draw_openpose_labels(labels, points)
 
@@ -213,7 +215,7 @@ def make_labels_with_openpose(paths, exclude_landmarks=None, label_face=True, no
 
         # normalization data
         if norm_path is not None:
-            np.save(norm_path, np.array(points, dtype=np.int32))
+            np.save(norm_path, points)
 
 
 def make_labels_with_densepose(paths, exclude_landmarks=None, label_face=True, normalize=False):
