@@ -2,10 +2,13 @@ import wget
 import dlib
 import bz2
 import cv2 as cv
+import math
 import numpy as np
+from enum import Enum
 from imutils import face_utils
 import sys
 from .paths import data_paths
+from .video_utils import crop_frame
 
 import detectron2
 from detectron2.utils.logger import setup_logger
@@ -116,7 +119,92 @@ def label_face(face_detector, face_predictor, landmarks, image, labels, face_col
 def pose_point_is_valid(point):
     return (point >= 0).all()
 
-def draw_openpose_labels(cvimg, points):
+
+
+class Labeller:
+    Strategies = Enum('Strategies', 'densepose openpose')
+
+    @classmethod
+    def build(cls, strategy, paths, exclude_landmarks=None, label_face=True, normalize=False):
+        if strategy == cls.Strategies.densepose:
+            return DenseposeLabeller(paths, exclude_landmarks=exclude_landmarks, label_face=label_face, normalize=normalize)
+        elif strategy == cls.Strategies.openpose:
+            return OpenposeLabeller(paths, exclude_landmarks=exclude_landmarks, label_face=label_face, normalize=normalize)
+        else:
+            raise NotImplementedError("Unrecognized labeling strategy: {}".format(strategy))
+
+
+
+class DenseposeLabeller(Labeller):
+    def __init__(self, paths, exclude_landmarks=None, label_face=True, normalize=False):
+        if normalize:
+            raise NotImplementedError("Normalization is not yet supported with the densepose labeller")
+
+        cfg = get_cfg()
+        add_densepose_config(cfg)
+        add_hrnet_config(cfg)
+        cfg.merge_from_file(str(paths.densepose_cfg))
+        cfg.MODEL.WEIGHTS = str(paths.densepose_model)
+        cfg.freeze()
+        self.pose_predictor = DefaultPredictor(cfg)
+
+        self.face_detector, self.face_predictor, self.landmarks = (None,None,None)
+        if label_face:
+            self.face_detector, self.face_predictor, self.landmarks = build_face_detector(paths, exclude_landmarks=exclude_landmarks)
+
+        self.cmap = build_label_colormap()
+        if self.face_detector is not None:
+            self.face_colors = [tuple(map(int, r[0])) for r in self.cmap[26 : 26 + len(self.landmarks)]]
+        self.visualizer = DensePoseMaskedColormapResultsVisualizer(_extract_i_from_iuvarr, _extract_i_from_iuvarr, cmap=self.cmap, alpha=1.0, val_scale=1.0)
+        self.extractor = create_extractor(visualizer)
+
+    def label_image(self, image, image_path, label_path, norm_path):
+        labels = np.zeros(image.shape, dtype=np.uint8)
+
+        # Pose detection
+        outputs = self.pose_predictor(image)['instances']
+        data = self.extractor(outputs)
+        if data is not None and data[1] is not None:
+            self.visualizer.visualize(labels, data)
+        else:
+            print("No pose detected for frame {}".format(image_path))
+
+        # Face detection
+        if self.face_detector is not None:
+            labels = label_face(self.face_detector, self.face_predictor, self.landmarks, image, labels, self.face_colors)
+
+        cv.imwrite(str(label_path), labels)
+
+# from https://github.com/CMU-Perceptual-Computing-Lab/openpose/blob/master/doc/02_output.md
+# {0,  "Nose"},
+# {1,  "Neck"},
+# {2,  "RShoulder"},
+# {3,  "RElbow"},
+# {4,  "RWrist"},
+# {5,  "LShoulder"},
+# {6,  "LElbow"},
+# {7,  "LWrist"},
+# {8,  "MidHip"},
+# {9,  "RHip"},
+# {10, "RKnee"},
+# {11, "RAnkle"},
+# {12, "LHip"},
+# {13, "LKnee"},
+# {14, "LAnkle"},
+# {15, "REye"},
+# {16, "LEye"},
+# {17, "REar"},
+# {18, "LEar"},
+# {19, "LBigToe"},
+# {20, "LSmallToe"},
+# {21, "LHeel"},
+# {22, "RBigToe"},
+# {23, "RSmallToe"},
+# {24, "RHeel"},
+# {25, "Background"}
+class OpenposeLabeller(Labeller):
+    num_points = 25
+    threshold = 0.1
     point_pairs = [[1, 0], [1, 2], [1, 5], 
                     [2, 3], [3, 4], [5, 6], 
                     [6, 7], [0, 15], [15, 17], 
@@ -126,78 +214,58 @@ def draw_openpose_labels(cvimg, points):
                     [8, 12], [12, 13], [13, 14], 
                     [14, 19], [19, 20], [14, 21]]
 
-    for label, (a, b) in enumerate(point_pairs, start=1):
-        if pose_point_is_valid(points[a]) and pose_point_is_valid(points[b]):
-            cv.line(cvimg, tuple(points[a]), tuple(points[b]), label, 3)
+    def __init__(self, paths, exclude_landmarks=None, label_face=True, normalize=False):
+        self.net = cv.dnn.readNetFromCaffe(str(paths.pose_prototxt), str(paths.pose_model))
+        self.net.setPreferableBackend(cv.dnn.DNN_BACKEND_CUDA)
+        self.net.setPreferableTarget(cv.dnn.DNN_TARGET_CUDA)
 
-def make_labels_with_openpose(paths, exclude_landmarks=None, label_face=True, normalize=False):
-    net = cv.dnn.readNetFromCaffe(str(paths.pose_prototxt), str(paths.pose_model))
-    net.setPreferableBackend(cv.dnn.DNN_BACKEND_CUDA)
-    net.setPreferableTarget(cv.dnn.DNN_TARGET_CUDA)
-
-    face_detector, face_predictor, landmarks = (None,None,None)
-    if label_face:
-        face_detector, face_predictor, landmarks = build_face_detector(paths, exclude_landmarks=exclude_landmarks)
+        self.face_detector, self.face_predictor, self.landmarks = (None,None,None)
+        if label_face:
+            self.face_detector, self.face_predictor, self.landmarks = build_face_detector(paths, exclude_landmarks=exclude_landmarks)
 
 
-    # from https://github.com/CMU-Perceptual-Computing-Lab/openpose/blob/master/doc/02_output.md
-    # {0,  "Nose"},
-    # {1,  "Neck"},
-    # {2,  "RShoulder"},
-    # {3,  "RElbow"},
-    # {4,  "RWrist"},
-    # {5,  "LShoulder"},
-    # {6,  "LElbow"},
-    # {7,  "LWrist"},
-    # {8,  "MidHip"},
-    # {9,  "RHip"},
-    # {10, "RKnee"},
-    # {11, "RAnkle"},
-    # {12, "LHip"},
-    # {13, "LKnee"},
-    # {14, "LAnkle"},
-    # {15, "REye"},
-    # {16, "LEye"},
-    # {17, "REar"},
-    # {18, "LEar"},
-    # {19, "LBigToe"},
-    # {20, "LSmallToe"},
-    # {21, "LHeel"},
-    # {22, "RBigToe"},
-    # {23, "RSmallToe"},
-    # {24, "RHeel"},
-    # {25, "Background"}
+        self.cmap = build_label_colormap()
+        if self.face_detector is not None:
+            self.face_colors = [tuple(map(int, r[0])) for r in cmap[self.num_points : self.num_points + len(self.landmarks)]]
 
-    num_points = 25
-    threshold = 0.1
+    @classmethod
+    def draw_labels(cls, cvimg, points):
+        for label, (a, b) in enumerate(cls.point_pairs, start=1):
+            pa = points[a]
+            pb = points[b]
+            if pose_point_is_valid(pa) and pose_point_is_valid(pb):
+                #cv.line(cvimg, tuple(pa), tuple(pb), label, 3)
+                coords = np.array([pa, pb])
+                center = tuple(np.round(np.mean(coords, 0)).astype(int))
+                D = pa - pb
+                L = np.linalg.norm(D)
+                angle = math.degrees(math.atan2(D[1], D[0]))
+                poly = cv.ellipse2Poly(center, (int(L / 2), 4), int(angle), 0, 360, 1)
+                cv.fillConvexPoly(cvimg, poly, label)
 
-    cmap = build_label_colormap()
-    if face_detector is not None:
-        face_colors = [tuple(map(int, r[0])) for r in cmap[num_points : num_points + len(landmarks)]]
-
-    for image, image_path, label_path, norm_path in label_images(paths, normalize=normalize):
+    def label_image(self, image, image_path, label_path, norm_path, resize=None, crop=None):
         labels = np.zeros(image.shape, dtype=np.uint8)
 
         # Pose detection
         iw = image.shape[1]
         ih = image.shape[0]
-        size = (368,368)#(iw, ih) # others set this to (368, 368)
+        size = (368,368)
         blob = cv.dnn.blobFromImage(image, 1.0 / 255.0, size, (0,0,0), swapRB=False, crop=False)
-        net.setInput(blob)
+        self.net.setInput(blob)
 
-        output = net.forward()
+        output = self.net.forward()
         ow = output.shape[3]
         oh = output.shape[2]
 
 
         points = []
-        for i in range(num_points):
+        for i in range(self.num_points):
             confidence = output[0, i, :, :]
             minval, prob, minloc, point = cv.minMaxLoc(confidence)
             x = ( iw * point[0] ) / ow
             y = ( ih * point[1] ) / oh
 
-            if prob > threshold:
+            if prob > self.threshold:
                 points.append([int(x), int(y)])
             else:
                 points.append([-1, -1])
@@ -205,11 +273,19 @@ def make_labels_with_openpose(paths, exclude_landmarks=None, label_face=True, no
         points = np.array(points, dtype=np.int32)
 
         # labelling
-        draw_openpose_labels(labels, points)
+        self.draw_labels(labels, points)
 
         # Face detection
-        if face_detector is not None:
-            labels = label_face(face_detector, face_predictor, landmarks, image, labels, face_colors)
+        if self.face_detector is not None:
+            labels = label_face(self.face_detector, self.face_predictor, self.landmarks, image, labels, self.face_colors)
+
+        center = None
+        if crop is not None:
+            center = np.ma.masked_less(points, 0).mean(axis=0)
+            if center.all() is np.ma.masked: center = np.array([iw / 2, ih / 2])
+            center = list(center.round().astype(int))
+            points = points - center + [crop[0]/2,crop[1]/2]
+            labels = crop_frame(labels, crop, center)
 
         cv.imwrite(str(label_path), labels)
 
@@ -217,50 +293,4 @@ def make_labels_with_openpose(paths, exclude_landmarks=None, label_face=True, no
         if norm_path is not None:
             np.save(norm_path, points)
 
-
-def make_labels_with_densepose(paths, exclude_landmarks=None, label_face=True, normalize=False):
-    if normalize:
-        raise NotImplementedError("Normalization is not yet supported with the densepose labeller")
-
-
-    cfg = get_cfg()
-    add_densepose_config(cfg)
-    add_hrnet_config(cfg)
-    cfg.merge_from_file(str(paths.densepose_cfg))
-    cfg.MODEL.WEIGHTS = str(paths.densepose_model)
-    cfg.freeze()
-    pose_predictor = DefaultPredictor(cfg)
-
-    face_detector, face_predictor, landmarks = (None,None,None)
-    if label_face:
-        face_detector, face_predictor, landmarks = build_face_detector(paths, exclude_landmarks=exclude_landmarks)
-
-    cmap = build_label_colormap()
-
-    if face_detector is not None:
-        face_colors = [tuple(map(int, r[0])) for r in cmap[26 : 26 + len(landmarks)]]
-
-    for image, image_path, label_path, _ in label_images(paths):
-        labels = np.zeros(image.shape, dtype=np.uint8)
-
-        # Pose detection
-        outputs = pose_predictor(image)['instances']
-        visualizer = DensePoseMaskedColormapResultsVisualizer(_extract_i_from_iuvarr, _extract_i_from_iuvarr, cmap=cmap, alpha=1.0, val_scale=1.0)
-        extractor = create_extractor(visualizer)
-        data = extractor(outputs)
-        if data is not None and data[1] is not None:
-            visualizer.visualize(labels, data)
-        else:
-            print("No pose detected for frame {}".format(image_path))
-
-        # Face detection
-        if face_detector is not None:
-            labels = label_face(face_detector, face_predictor, landmarks, image, labels, face_colors)
-
-        cv.imwrite(str(label_path), labels)
-
-def make_labels(labeller, paths, exclude_landmarks=None, label_face=True, normalize=False):
-    if labeller == 'openpose':
-        make_labels_with_openpose(paths, exclude_landmarks=exclude_landmarks, label_face=label_face, normalize=normalize)
-    elif labeller == "densepose":
-        make_labels_with_densepose(paths, exclude_landmarks=exclude_landmarks, label_face=label_face, normalize=normalize)
+        return center

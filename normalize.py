@@ -11,7 +11,7 @@ import shutil
 import cv2 as cv
 
 from motion_transfer.paths import build_paths, data_paths
-from motion_transfer.labelling import draw_openpose_labels, pose_point_is_valid
+from motion_transfer.labelling import OpenposeLabeller, pose_point_is_valid
 
 def isinvalid(p):
     return not pose_point_is_valid(p)
@@ -94,29 +94,33 @@ def calculate_ankle_and_height(ankles, noses, heights, method=np.amin, window=0.
 
     height = math.nan
     if len(heights_over_z):
-        height = np.amax(heights_over_z)
+        height = np.median(heights_over_z) # was np.amax ... parameterize?
 
     return ankle_y, height
 
-def calculate_close_and_far_transformations(ankles, noses, heights, window=0.05, zthreshold=1.0):
-    window_inc = 0.05
-    max_window = 0.3
+def calculate_close_and_far_transformations(ankles, noses, heights, start_window=0.05, start_zthreshold=1.0):
+    window_inc = 0.025
+    max_window = 0.3 # % of the image (doubled)
     zthreshold_inc = -0.1
-    min_zthreshold = -1.0
+    min_zthreshold = 0 # mean
+    success = False
 
-    while True:
-        a_close, h_close = calculate_ankle_and_height(ankles, noses, heights, method=np.amax, window=window, zthreshold=zthreshold)
-        a_far, h_far = calculate_ankle_and_height(ankles, noses, heights, method=np.amin, window=window, zthreshold=zthreshold)
+    window = start_window
+    while not success and window <= max_window:
+        zthreshold = start_zthreshold
+        while not success and zthreshold >= min_zthreshold:
+            a_close, h_close = calculate_ankle_and_height(ankles, noses, heights, method=np.amax, window=window, zthreshold=zthreshold)
+            a_far, h_far = calculate_ankle_and_height(ankles, noses, heights, method=np.amin, window=window, zthreshold=zthreshold)
 
-        if not math.isnan(h_close) and not math.isnan(h_far) and a_close > a_far and h_close > h_far:
-            break
+            if not math.isnan(h_close) and not math.isnan(h_far) and a_close > a_far and h_close > h_far:
+                success = True
 
 
-        zthreshold += zthreshold_inc
+            zthreshold += zthreshold_inc
         window += window_inc
 
-        if window > max_window or zthreshold < min_zthreshold:
-            raise Exception("Could not find a window and z-score threshold that result in expected transformations")
+    if not success:
+        raise Exception("Could not find a window and z-score threshold that result in expected transformations")
 
     return a_close, h_close, a_far, h_far, window, zthreshold
 
@@ -133,8 +137,8 @@ else:
     s_ankles, s_noses, s_heights, s_images = calculate_metrics(source_paths, limit=args.limit)
     t_ankles, t_noses, t_heights, t_images = calculate_metrics(target_paths, limit=args.limit)
 
-    s_calc = calculate_close_and_far_transformations(s_ankles, s_noses, s_heights, window=args.window, zthreshold=args.zthreshold)
-    t_calc = calculate_close_and_far_transformations(t_ankles, t_noses, t_heights, window=args.window, zthreshold=args.zthreshold)
+    s_calc = calculate_close_and_far_transformations(s_ankles, s_noses, s_heights, start_window=args.window, start_zthreshold=args.zthreshold)
+    t_calc = calculate_close_and_far_transformations(t_ankles, t_noses, t_heights, start_window=args.window, start_zthreshold=args.zthreshold)
     calculations = [s_calc, t_calc]
 
     if not args.dry_run:
@@ -143,13 +147,22 @@ else:
 s_close_ankle, s_close_height, s_far_ankle, s_far_height, s_win, s_thrsh = calculations[0]
 t_close_ankle, t_close_height, t_far_ankle, t_far_height, t_win, t_thrsh = calculations[1]
 
+scale_close = t_close_height / s_close_height
+scale_far = t_far_height / s_far_height
+scale_diff = scale_close - scale_far
+s_ankle_diff = s_close_ankle - s_far_ankle
+t_ankle_diff = t_close_ankle - t_far_ankle
+
 if args.dry_run:
-    print("Source close\tankle: {:.2f}\theight: {:.2f}".format(s_close_ankle, s_close_height))
-    print("Source far\tankle: {:.2f}\theight: {:.2f}".format(s_far_ankle, s_far_height))
     print("Source params\twin: {:.2f}\tz-threshold: {:.2f}".format(s_win, s_thrsh))
-    print("Target close\tankle: {:.2f}\theight: {:.2f}".format(t_close_ankle, t_close_height))
-    print("Target far\tankle: {:.2f}\theight: {:.2f}".format(t_far_ankle, t_far_height))
+    print("Source far\tankle: {:.2f}\theight: {:.2f}".format(s_far_ankle, s_far_height))
+    print("Source close\tankle: {:.2f}\theight: {:.2f}".format(s_close_ankle, s_close_height))
+    print("")
     print("Target params\twin: {:.2f}\tz-threshold: {:.2f}".format(t_win, t_thrsh))
+    print("Target far\tankle: {:.2f}\theight: {:.2f}".format(t_far_ankle, t_far_height))
+    print("Target close\tankle: {:.2f}\theight: {:.2f}".format(t_close_ankle, t_close_height))
+    print("")
+    print("Scales\tfar: {:.2f}\tclose: {:.2f}\tdelta: {:.2f}".format(scale_far, scale_close, scale_diff))
 
     sys.exit()
 
@@ -157,11 +170,6 @@ if args.dry_run:
 
 
 prev_y = -1
-scale_close = t_close_height / s_close_height
-scale_far = t_far_height / s_far_height
-scale_diff = scale_close - scale_far
-s_ankle_diff = s_close_ankle - s_far_ankle
-t_ankle_diff = t_close_ankle - t_far_ankle
 
 if not source_paths.denorm_label_dir.exists():
     print("Moving denormalized source labels to {}".format(source_paths.denorm_label_dir))
@@ -170,7 +178,7 @@ if not source_paths.denorm_label_dir.exists():
 source_paths.label_dir.mkdir(exist_ok=True)
 
 if len(os.listdir(source_paths.label_dir)) == len(os.listdir(source_paths.denorm_label_dir)):
-    print("{} normalized labels found, skipping normalization", len(os.listdir(source_paths.label_dir)))
+    print("{} normalized labels found, skipping normalization".format(len(os.listdir(source_paths.label_dir))))
 
 else:
     for i, (image_path, label_path, norm_path) in enumerate(data_paths(source_paths, normalize=True)):
@@ -194,6 +202,7 @@ else:
             tx = np.array([origin[0], t_far_ankle + a * t_ankle_diff], dtype=float)
 
 
+        # apply transform
         points = np.where(points >= 0, (points - origin) * scale + tx, points)
 
         with Image.open(str(image_path)) as img:
@@ -201,6 +210,6 @@ else:
 
         labels = np.zeros((h, w, 3), dtype=np.uint8)
 
-        draw_openpose_labels(labels, points.round().astype(np.int32))
+        OpenposeLabeller.draw_labels(labels, points.round().astype(np.int32))
 
         cv.imwrite(str(label_path), labels)

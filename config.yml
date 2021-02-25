@@ -55,6 +55,40 @@ mt_daria2_heni3:
                   options:
                           - label-with openpose
                           - no-label-face
+        normalize:
+                options:
+                        - zthreshold 0.5
+        train:
+                global:
+                        epochs: 12
+                        options:
+                                - no_flip
+                local: 
+                        epochs: 40
+                        options:
+                                - no_flip
+        generate:
+                options:
+                        - codec prores
+
+mt_daria2_heni3_sq:
+        width: 1024
+        height: 1024
+        labels: 26
+        data:
+                - source: ~/media/source_daria_2_trimmed.mov
+                  resize: false
+                  crop: true
+                  options:
+                          - label-with openpose
+                          - no-label-face
+                          - directory-prefix test
+                - source: ~/media/target_heni_3.MP4
+                  resize: false
+                  crop: true
+                  options:
+                          - label-with openpose
+                          - no-label-face
         normalize: true
         train:
                 global:
@@ -63,6 +97,38 @@ mt_daria2_heni3:
                                 - no_flip
                 local: 
                         epochs: 20
+                        options:
+                                - no_flip
+        generate:
+                options:
+                        - codec prores
+mt_daria2_heni3_sq_lores:
+        width: 512
+        height: 512
+        labels: 26
+        data:
+                - source: ~/media/source_daria_2_trimmed.mov
+                  resize: 1024x576
+                  crop: true
+                  options:
+                          - label-with openpose
+                          - no-label-face
+                          - directory-prefix test
+                - source: ~/media/target_heni_3.MP4
+                  resize: 1024x576
+                  crop: true
+                  options:
+                          - label-with openpose
+                          - no-label-face
+        normalize: true
+        train:
+                global:
+                        epochs: 12
+                        options:
+                                - no_flip
+                local: 
+                        epochs: 40
+                        ngf: 32
                         options:
                                 - no_flip
         generate:

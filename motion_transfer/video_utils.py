@@ -1,9 +1,11 @@
 import subprocess
 import shlex
 import cv2 as cv
+import numpy as np
 import os
 from tqdm import tqdm
 from enum import Enum
+from .paths import data_paths_for_image
 
 Codec = Enum('Codec', 'x264 prores')
 
@@ -38,8 +40,26 @@ def video_from_frame_directory(frame_dir, video_path, codec=Codec.x264, frame_fi
     p = subprocess.Popen(shlex.split(command), shell=False)
     p.communicate()
 
-def decimate_video(path, output_dir, limit=None, trim=(0.0, -1.0), subsample=1, subsample_offset=0, resize=None, flip=None):
-    cap = cv.VideoCapture(str(path))
+def crop_frame(image, dims, center):
+    wa = dims[0] // 2
+    ha = dims[1] // 2
+    wb = dims[0] - wa
+    hb = dims[1] - ha
+
+    c = np.array(center) + [wa, ha] # account for padding
+
+    xa = c[0] - wa
+    xb = c[0] + wb
+    ya = c[1] - ha
+    yb = c[1] + hb
+
+    o = np.pad(image, ((ha,hb),(wa,wb),(0,0)), mode='edge')
+    o = o[ya:yb, xa:xb].copy()
+
+    return o
+
+def decimate_and_label_video(paths, labeller, limit=None, trim=(0.0, -1.0), subsample=1, subsample_offset=0, resize=None, crop=None, flip=None, normalize=False):
+    cap = cv.VideoCapture(str(paths.input))
     if not cap.isOpened(): return
 
     nframes = int(cap.get(cv.CAP_PROP_FRAME_COUNT))
@@ -49,9 +69,22 @@ def decimate_video(path, output_dir, limit=None, trim=(0.0, -1.0), subsample=1, 
     start_frame = int(fps * trim[0])
     end_frame = nframes if trim[1] < 0.0 else max(start_frame + 1, int(fps * trim[1]))
 
-    if (end_frame - start_frame) // subsample == len(os.listdir(str(output_dir))):
+
+    frames_needed = (end_frame - start_frame) // subsample
+    if (
+            frames_needed == len(os.listdir(str(paths.img_dir))) and
+            (
+                labeller is None or
+                (
+                    frames_needed <= len(os.listdir(str(paths.label_dir))) or
+                    (paths.denorm_label_dir.exists() and frames_needed <= len(os.listdir(str(paths.denorm_label_dir))))
+                )
+            ) and
+            (not normalize or frames_needed == len(os.listdir(str(paths.norm_dir))))
+       ):
         print("Found %d frames, skipping." % (end_frame - start_frame))
         return
+
 
     cap.set(cv.CAP_PROP_POS_FRAMES, start_frame)
 
@@ -60,12 +93,22 @@ def decimate_video(path, output_dir, limit=None, trim=(0.0, -1.0), subsample=1, 
         if not cap.grab(): break
         if (i + subsample_offset) % subsample != 0: continue
 
-        imgpath = output_dir / '{:05}.png'.format(i)
+        image_path = paths.img_dir / '{:05}.png'.format(i)
+        _, label_path, norm_path = data_paths_for_image(paths, image_path.name, normalize=normalize)
 
-        if not imgpath.exists():
+        if not image_path.exists() or not label_path.exists() or ( norm_path is not None and not norm_path.exists() ):
             success, frame = cap.retrieve()
             if not success: break
 
             if resize is not None: frame = cv.resize(frame, resize, interpolation=cv.INTER_AREA)
             if flip is not None: frame = cv.flip(frame, flip)
-            cv.imwrite(str(imgpath), frame)
+
+            center = None
+            if labeller is not None:
+                center = labeller.label_image(frame, image_path, label_path, norm_path, resize=resize, crop=crop)
+
+            if center is not None:
+                frame = crop_frame(frame, crop, center)
+
+
+            cv.imwrite(str(image_path), frame)

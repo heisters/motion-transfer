@@ -55,16 +55,19 @@ def create_directories(paths):
             v.mkdir(exist_ok=True)
 
 
-def data_paths(paths, normalize=False):
+def data_paths_for_image(paths, image_path, normalize=False):
     img_dir = paths.img_dir
     label_dir = paths.label_dir
     norm_dir = paths.norm_dir
 
-    for image_path_str in tqdm(os.listdir(str(img_dir))):
-        image_path = img_dir / image_path_str
-        label_path = label_dir / image_path.name
-        norm_path = None
-        if norm_dir is not None and normalize:
-            norm_path = norm_dir / image_path.with_suffix('.npy').name
+    image_path = img_dir / image_path
+    label_path = label_dir / image_path.name
+    norm_path = None
+    if norm_dir is not None and normalize:
+        norm_path = norm_dir / image_path.with_suffix('.npy').name
 
-        yield image_path, label_path, norm_path
+    return image_path, label_path, norm_path
+
+def data_paths(paths, normalize=False):
+    for image_path_str in tqdm(os.listdir(str(paths.img_dir))):
+        yield data_paths_for_image(paths, image_path_str, normalize=normalize)
