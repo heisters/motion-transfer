@@ -19,6 +19,7 @@ def isinvalid(p):
 def parse_arguments():
     p = argparse.ArgumentParser(description="Normalize source video labels to the space of the target video")
     p.add_argument('--dataroot', type=str)
+    p.add_argument('--target-dataroot', type=str)
     p.add_argument('--limit', help="Only process the first N data samples", type=int)
     p.add_argument('--window', help="Starting ankle position window size as a floating-point percentage", type=float, default=0.05)
     p.add_argument('--zthreshold', help="Starting z-score threshold for height consideration", type=float, default=1.0)
@@ -128,7 +129,7 @@ def calculate_close_and_far_transformations(ankles, noses, heights, start_window
 
 args = parse_arguments()
 source_paths = build_paths(args, directory_prefix='test')
-target_paths = build_paths(args, directory_prefix='train')
+target_paths = build_paths(args, directory_prefix='train', dataroot=args.target_dataroot)
 
 if source_paths.norm_calculations.exists():
     print("Loading normalization calculations from {}".format(source_paths.norm_calculations))

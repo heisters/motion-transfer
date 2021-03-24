@@ -13,7 +13,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("name", help="the name of the configuration to load from the file provided")
 parser.add_argument("--config", default="config.yml", help="path to the config YAML file")
 parser.add_argument("--dry-run", help="print the command to be executed and exit", action='store_true')
-parser.add_argument("--only", help="Comma separated list of commands to run from data, normalize, train_global, train_local, and generate. Defaults to all.", default="data,normalize,train_global,train_local,generate")
+parser.add_argument("--only", help="Comma separated list of commands to run from data, normalize, train_global, train_local, synthesize, and generate. Defaults to all.", default="data,normalize,train_global,train_local,synthesize,generate")
 args = parser.parse_args()
 
 only = set(tuple(args.only.split(',')))
@@ -41,7 +41,7 @@ def build_options(yaml):
 #
 # Data
 #
-if 'data' in only:
+if 'data' in only and "data" in config:
     for recipe in config["data"]:
         source = recipe["source"]
         data = recipe.get('name', name)
@@ -71,13 +71,15 @@ if 'normalize' in only and normalize:
         options = None
 
     options = build_options(options)
+    target = normalize.get('target', None)
+    if target: options.append('--target-dataroot data/{}'.format(target))
     options = " ".join(options)
     commands.append("./normalize.py --dataroot data/{} {}".format(name, options))
 
 #
 # Training
 #
-if 'train_global' in only:
+if 'train_global' in only and "train" in config and "global" in config["train"]:
 
     # global
     train = config["train"]["global"]
@@ -86,7 +88,7 @@ if 'train_global' in only:
     niter_decay = train["epochs"] - niter
     global_ngf = train.get('ngf', global_ngf)
     options = build_options(train.get('options'))
-    if os.path.exists("checkpoints/{}_global".format(name)): options.append('--continue_train')
+    if os.path.exists("checkpoints/{}_global/latest_net_G.pth".format(name)): options.append('--continue_train')
     options.append('--ngf {}'.format(global_ngf))
 
 
@@ -99,7 +101,7 @@ if 'train_global' in only:
                 data, name, labels, width / 2, width / 2, niter, niter_decay, options))
 
 
-if 'train_local' in only:
+if 'train_local' in only and "train" in config and "local" in config["train"]:
     # local
     train = config["train"]["local"]
     data = train.get('data', name)
@@ -108,7 +110,7 @@ if 'train_local' in only:
     niter_fix_global = ceil(train["epochs"] / 5)
     local_ngf = train.get('ngf', local_ngf)
     options = build_options(train.get('options'))
-    if os.path.exists("checkpoints/{}_local".format(name)): options.append('--continue_train')
+    if os.path.exists("checkpoints/{}_local/latest_net_G.pth".format(name)): options.append('--continue_train')
     options.append('--ngf {}'.format(local_ngf))
 
 
@@ -121,18 +123,33 @@ if 'train_local' in only:
                 data, name, labels, width, width, niter, niter_decay, niter_fix_global, name, options))
 
 #
+# Synthesis
+#
+if 'synthesize' in only and 'synthesize' in config:
+    synthesize = config['synthesize']
+    data = synthesize.get('data', name)
+    iput = synthesize["input"]
+    nframes = synthesize["nframes"]
+    options = build_options(synthesize.get('options'))
+    options = " ".join(options)
+    commands.append("./synthesize_movement.py --dataroot data/{} --input {} --nframes {} {}".format(
+        data, iput, nframes, options))
+
+#
 # Generation
 #
 
-if 'generate' in only:
+if 'generate' in only and 'generate' in config:
     generate = config['generate']
     data = generate.get('data', name)
+    model = generate.get('model', name)
     options = build_options(generate.get('options'))
+    if 'synthesize' in config: options.append('--results_name {}'.format(name))
     options = " ".join(options)
     commands.append("./generate_video.py --dataroot data/{} --name {}_local "
             "--label_nc {} --no_instance --fp16 --netG local --fineSize {} "
             "--ngf {} --resize_or_crop none {}".format(
-                data, name, labels, width, local_ngf, options))
+                data, model, labels, width, local_ngf, options))
 
 command = " && \\\n".join(commands)
 

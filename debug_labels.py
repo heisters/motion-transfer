@@ -45,11 +45,11 @@ if args.video:
 
             cv.imwrite(str(dirpath / img), blended)
 
-        video_from_frame_directory(dirpath, Path(out), frame_file_glob=r"%05d.png")
+        video_from_frame_directory(dirpath, Path(out), frame_file_glob=r"%06d.png")
 
 
 else:
-    img = sorted(os.listdir(label_dir))[-1] if args.frame is None else '{:05}.png'.format(args.frame)
+    img = sorted(os.listdir(label_dir))[-1] if args.frame is None else '{:06}.png'.format(args.frame)
     img_path = img_dir / img
     label_path = label_dir / img_path.name
     blended = overlay_label(img_path, label_path)

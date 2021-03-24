@@ -18,49 +18,49 @@ import util.util as util
 
 
 
-opt = VideoOptions()
-opt = opt.parse(save=False)
-opt.nThreads = 1   # test code only supports nThreads = 1
-opt.batchSize = 1  # test code only supports batchSize = 1
-opt.serial_batches = True  # no shuffle
-opt.no_flip = True  # no flip
-opt.resize_or_crop = "none"
+args = VideoOptions()
+args = args.parse(save=False)
+args.nThreads = 1   # test code only supports nThreads = 1
+args.batchSize = 1  # test code only supports batchSize = 1
+args.serial_batches = True  # no shuffle
+args.no_flip = True  # no flip
+args.resize_or_crop = "none"
 
-paths = build_paths(opt)
+paths = build_paths(args)
 
-codec = Codec[opt.codec]
+codec = Codec[args.codec]
 
-data_loader = CreateDataLoader(opt)
+data_loader = CreateDataLoader(args)
 dataset = data_loader.load_data()
 
 
-nframes = opt.how_many if opt.how_many is not None else len(dataset)
-duration_s = nframes / opt.fps
+nframes = args.how_many if args.how_many is not None else len(dataset)
+duration_s = nframes / args.fps
 video_id = "epoch-%s_%s_%ds_%dfps%s" % (
-    str(opt.which_epoch),
-    opt.name,
+    str(args.which_epoch),
+    args.name,
     duration_s,
-    opt.fps,
-    opt.output_suffix
+    args.fps,
+    args.output_suffix
 )
 
 frame_dir = paths.results_dir / video_id
 video_path = video_filename_for_codec(paths.results_dir / video_id, codec)
 frame_dir.mkdir(parents=True, exist_ok=True)
 
-model = create_model(opt)
+model = create_model(args)
 
 
 for i, data in enumerate(tqdm(dataset)):
-    fn = frame_dir / ("frame-%s.png" % str(i + 1).zfill(5))
+    fn = frame_dir / ("frame-%s.png" % str(i + 1).zfill(6))
     if fn.exists(): continue
 
-    if opt.how_many is not None and i >= opt.how_many:
+    if args.how_many is not None and i >= args.how_many:
         break
-    if opt.data_type == 16:
+    if args.data_type == 16:
         data['label'] = data['label'].half()
         data['inst']  = data['inst'].half()
-    elif opt.data_type == 8:
+    elif args.data_type == 8:
         data['label'] = data['label'].uint8()
         data['inst']  = data['inst'].uint8()
 
@@ -74,7 +74,7 @@ if not video_path.exists():
     video_from_frame_directory(
         frame_dir, 
         video_path, 
-        framerate=opt.fps,
+        framerate=args.fps,
         codec=codec
     )
 

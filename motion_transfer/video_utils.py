@@ -5,7 +5,7 @@ import numpy as np
 import os
 from tqdm import tqdm
 from enum import Enum
-from .paths import data_paths_for_image
+from .paths import data_paths_for_idx
 
 Codec = Enum('Codec', 'x264 prores')
 
@@ -18,7 +18,7 @@ def video_filename_for_codec(path, codec):
         raise Exception('unrecognized codec: {}'.format(codec))
 
 
-def video_from_frame_directory(frame_dir, video_path, codec=Codec.x264, frame_file_glob=r"frame-%05d.png", framerate=24, ffmpeg_verbosity=16):
+def video_from_frame_directory(frame_dir, video_path, codec=Codec.x264, frame_file_glob=r"frame-%06d.png", framerate=24, ffmpeg_verbosity=16):
     """Build a mp4 video from a directory frames
     """
     if codec == Codec.x264:
@@ -60,7 +60,8 @@ def crop_frame(image, dims, center):
 
 def decimate_and_label_video(paths, labeller, limit=None, trim=(0.0, -1.0), subsample=1, subsample_offset=0, resize=None, crop=None, flip=None, normalize=False):
     cap = cv.VideoCapture(str(paths.input))
-    if not cap.isOpened(): return
+    if not cap.isOpened():
+        raise Exception("could not open input {}".format(paths.input))
 
     nframes = int(cap.get(cv.CAP_PROP_FRAME_COUNT))
     if limit is not None: nframes = min(nframes, limit)
@@ -93,8 +94,7 @@ def decimate_and_label_video(paths, labeller, limit=None, trim=(0.0, -1.0), subs
         if not cap.grab(): break
         if (i + subsample_offset) % subsample != 0: continue
 
-        image_path = paths.img_dir / '{:05}.png'.format(i)
-        _, label_path, norm_path = data_paths_for_image(paths, image_path.name, normalize=normalize)
+        image_path, label_path, norm_path = data_paths_for_idx(paths, i, normalize=normalize)
 
         if not image_path.exists() or not label_path.exists() or ( norm_path is not None and not norm_path.exists() ):
             success, frame = cap.retrieve()

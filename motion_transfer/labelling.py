@@ -121,24 +121,39 @@ def pose_point_is_valid(point):
 
 
 
-class Labeller:
+class Labeller(object):
     Strategies = Enum('Strategies', 'densepose openpose')
 
     @classmethod
-    def build(cls, strategy, paths, exclude_landmarks=None, label_face=True, normalize=False):
+    def add_arguments(cls, p):
+        p.add_argument('--label-with', help="Choose labelling strategy", choices=["openpose", "densepose"], default="openpose")
+        p.add_argument('--exclude-landmarks', help="CSV list of facial landmarks to exclude from the labels", type=str)
+        p.add_argument('--label-face', help="Add labels for the face (default on)", dest='label_face', action='store_true')
+        p.add_argument('--no-label-face', help="Do not add labels for the face", dest='label_face', action='store_false')
+
+        p.set_defaults(label_face=True)
+        return p
+
+    @classmethod
+    def build_from_arguments(cls, args, paths):
+        exclude_landmarks = set(args.exclude_landmarks.split(',')) if args.exclude_landmarks is not None else None
+        label_face = args.label_face
+        labeller = Labeller.build(Labeller.Strategies[args.label_with], paths, exclude_landmarks=exclude_landmarks, label_face=label_face)
+        return labeller
+
+    @classmethod
+    def build(cls, strategy, paths, exclude_landmarks=None, label_face=True):
         if strategy == cls.Strategies.densepose:
-            return DenseposeLabeller(paths, exclude_landmarks=exclude_landmarks, label_face=label_face, normalize=normalize)
+            return DenseposeLabeller(paths, exclude_landmarks=exclude_landmarks, label_face=label_face)
         elif strategy == cls.Strategies.openpose:
-            return OpenposeLabeller(paths, exclude_landmarks=exclude_landmarks, label_face=label_face, normalize=normalize)
+            return OpenposeLabeller(paths, exclude_landmarks=exclude_landmarks, label_face=label_face)
         else:
             raise NotImplementedError("Unrecognized labeling strategy: {}".format(strategy))
 
 
 
 class DenseposeLabeller(Labeller):
-    def __init__(self, paths, exclude_landmarks=None, label_face=True, normalize=False):
-        if normalize:
-            raise NotImplementedError("Normalization is not yet supported with the densepose labeller")
+    def __init__(self, paths, exclude_landmarks=None, label_face=True):
 
         cfg = get_cfg()
         add_densepose_config(cfg)
@@ -214,7 +229,8 @@ class OpenposeLabeller(Labeller):
                     [8, 12], [12, 13], [13, 14], 
                     [14, 19], [19, 20], [14, 21]]
 
-    def __init__(self, paths, exclude_landmarks=None, label_face=True, normalize=False):
+    def __init__(self, paths, exclude_landmarks=None, label_face=True):
+
         self.net = cv.dnn.readNetFromCaffe(str(paths.pose_prototxt), str(paths.pose_model))
         self.net.setPreferableBackend(cv.dnn.DNN_BACKEND_CUDA)
         self.net.setPreferableTarget(cv.dnn.DNN_TARGET_CUDA)
@@ -226,7 +242,7 @@ class OpenposeLabeller(Labeller):
 
         self.cmap = build_label_colormap()
         if self.face_detector is not None:
-            self.face_colors = [tuple(map(int, r[0])) for r in cmap[self.num_points : self.num_points + len(self.landmarks)]]
+            self.face_colors = [tuple(map(int, r[0])) for r in self.cmap[self.num_points : self.num_points + len(self.landmarks)]]
 
     @classmethod
     def draw_labels(cls, cvimg, points):
@@ -243,10 +259,7 @@ class OpenposeLabeller(Labeller):
                 poly = cv.ellipse2Poly(center, (int(L / 2), 4), int(angle), 0, 360, 1)
                 cv.fillConvexPoly(cvimg, poly, label)
 
-    def label_image(self, image, image_path, label_path, norm_path, resize=None, crop=None):
-        labels = np.zeros(image.shape, dtype=np.uint8)
-
-        # Pose detection
+    def detect_pose(self, image):
         iw = image.shape[1]
         ih = image.shape[0]
         size = (368,368)
@@ -271,6 +284,16 @@ class OpenposeLabeller(Labeller):
                 points.append([-1, -1])
 
         points = np.array(points, dtype=np.int32)
+        return points
+
+    def label_image(self, image, image_path, label_path, norm_path, resize=None, crop=None):
+        labels = np.zeros(image.shape, dtype=np.uint8)
+
+        iw = image.shape[1]
+        ih = image.shape[0]
+
+        points = self.detect_pose(image)
+
 
         # labelling
         self.draw_labels(labels, points)
