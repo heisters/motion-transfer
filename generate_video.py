@@ -25,6 +25,7 @@ args.batchSize = 1  # test code only supports batchSize = 1
 args.serial_batches = True  # no shuffle
 args.no_flip = True  # no flip
 args.resize_or_crop = "none"
+name = args.name if args.results_name is None else args.results_name
 
 paths = build_paths(args)
 
@@ -38,7 +39,7 @@ nframes = args.how_many if args.how_many is not None else len(dataset)
 duration_s = nframes / args.fps
 video_id = "epoch-%s_%s_%ds_%dfps%s" % (
     str(args.which_epoch),
-    args.name,
+    name,
     duration_s,
     args.fps,
     args.output_suffix

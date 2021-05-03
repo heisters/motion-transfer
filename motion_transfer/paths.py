@@ -44,14 +44,8 @@ def build_paths(args, directory_prefix=None, dataroot=None):
 
     try:
         if args.results_dir is not None:
-            name = None
-            if args.results_name is not None:
-                name = args.results_name
-            elif args.name is not None:
-                name = args.name
-
-            if name is not None:
-                paths.results_dir = paths.root_dir / args.results_dir / name
+            name = args.name if args.results_name is None else args.results_name
+            paths.results_dir = paths.root_dir / args.results_dir / name
     except AttributeError:
         pass
 

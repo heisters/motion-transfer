@@ -144,12 +144,11 @@ if 'generate' in only and 'generate' in config:
     data = generate.get('data', name)
     model = generate.get('model', name)
     options = build_options(generate.get('options'))
-    if 'synthesize' in config: options.append('--results_name {}'.format(name))
     options = " ".join(options)
-    commands.append("./generate_video.py --dataroot data/{} --name {}_local "
+    commands.append("./generate_video.py --dataroot data/{} --name {}_local --results_name {} "
             "--label_nc {} --no_instance --fp16 --netG local --fineSize {} "
             "--ngf {} --resize_or_crop none {}".format(
-                data, model, labels, width, local_ngf, options))
+                data, model, name, labels, width, local_ngf, options))
 
 command = " && \\\n".join(commands)
 

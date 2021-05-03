@@ -28,6 +28,11 @@ mt_daria2_heni3:
                 options:
                         - codec prores
 
+
+#
+# Portraits
+#
+
 8_01__Mouth_Still__Hen_to_Daria:
         width: 1536
         height: 864
@@ -147,6 +152,196 @@ mt_daria2_heni3:
         generate:
                 options:
                         - codec prores
+10_1_6_1__Hand_Eye__Daria_to_Hen:
+        width: 1536
+        height: 864
+        labels: 0
+        data:
+                - source: ~/media/10.1_6.1__Hand_to_Eye__Daria_to_Hen_Sub_02.mov
+                  options:
+                          - train-a
+                          - subsample 6
+                - source: ~/media/10.1_6.1__Hand_to_Eye__Daria_to_Hen_Sub_02.mov
+                  options:
+                          - test-a
+                - source: ~/media/10.1_6.1__Hand_to_Eye__Daria_to_Hen_Sub_01.mov
+                  options:
+                          - train-b
+                          - subsample 4
+        normalize: false
+        train:
+                global:
+                        epochs: 14
+                        options:
+                                - no_flip
+                local:
+                        epochs: 24
+                        options:
+                                - no_flip
+        generate:
+                options:
+                        - codec prores
+10_1_6_1__Hand_EyeV__Hen_to_Daria:
+        width: 1536
+        height: 864
+        labels: 0
+        data:
+                - source: ~/media/10.1_6.1__Hand_to_EyeV__Hen_to_Daria_Sub_01.mov
+                  options:
+                          - train-a
+                          - subsample 7
+                - source: ~/media/10.1_6.1__Hand_to_EyeV__Hen_to_Daria_Sub_01.mov
+                  options:
+                          - test-a
+                - source: ~/media/10.1_6.1__Hand_to_EyeV__Hen_to_Daria_Sub_02.mov
+                  options:
+                          - train-b
+                          - subsample 2
+        normalize: false
+        train:
+                global:
+                        epochs: 14
+                        options:
+                                - no_flip
+                local:
+                        epochs: 24
+                        options:
+                                - no_flip
+        generate:
+                options:
+                        - codec prores
+
+8_2_5_1__MouthV_to_Neck__Hen_to_Daria:
+        width: 1536
+        height: 864
+        labels: 0
+        data:
+                - source: ~/media/8_2_5_1__Mouth_to_Neck_Sub_01.mov
+                  options:
+                          - train-a
+                          - subsample 5
+                - source: ~/media/8_2_5_1__Mouth_to_Neck_Sub_01.mov
+                  options:
+                          - test-a
+                - source: ~/media/8_2_5_1__Mouth_to_Neck_Sub_02.mov
+                  options:
+                          - train-b
+                          - subsample 6
+        normalize: false
+        train:
+                global:
+                        epochs: 14
+                        options:
+                                - no_flip
+                local:
+                        epochs: 24
+                        options:
+                                - no_flip
+        generate:
+                options:
+                        - codec prores
+8_2_5_1__Neck_to_MouthV__Daria_to_Hen:
+        width: 1536
+        height: 864
+        labels: 0
+        data:
+                - source: ~/media/8_2_5_1__Mouth_to_Neck_Sub_02.mov
+                  options:
+                          - train-a
+                          - subsample 10
+                          - trim 0:900
+                - source: ~/media/8_2_5_1__Mouth_to_Neck_Sub_02.mov
+                  options:
+                          - test-a
+                          - trim 900:-1
+                - source: ~/media/8_2_5_1__Mouth_to_Neck_Sub_01.mov
+                  options:
+                          - train-b
+                          - subsample 10
+                          - trim 0:900
+        normalize: false
+        train:
+                global:
+                        epochs: 14
+                        options:
+                                - no_flip
+                local:
+                        epochs: 24
+                        options:
+                                - no_flip
+        generate:
+                options:
+                        - codec prores
+
+4_1__Hybrid:
+        width: 1536
+        height: 864
+        labels: 0
+        data:
+                - source: ~/media/4_1__Hybrid_Sub_01.mov
+                  options:
+                          - train-a
+                          - subsample 4
+                          - trim 0:360
+                - source: ~/media/4_1__Hybrid_Sub_02.mov
+                  options:
+                          - train-a
+                          - subsample 4
+                          - subsample-offset 1
+                          - trim 0:360
+                - source: ~/media/4_1__Hybrid_Sub_01.mov
+                  options:
+                          - train-b
+                          - subsample 4
+                          - subsample-offset 2
+                          - trim 0:360
+                - source: ~/media/4_1__Hybrid_Sub_02.mov
+                  options:
+                          - train-b
+                          - subsample 4
+                          - subsample-offset 3
+                          - trim 0:360
+        normalize: false
+        train:
+                global:
+                        epochs: 14
+                        options:
+                                - no_flip
+                local:
+                        epochs: 24
+                        options:
+                                - no_flip
+4_1__Hybrid_Daria:
+        width: 1536
+        height: 864
+        labels: 0
+        data:
+                - source: ~/media/4_1__Hybrid_Sub_01.mov
+                  options:
+                          - test-a
+                          - trim 360:-1
+        generate:
+                model: 4_1__Hybrid
+                options:
+                        - codec prores
+4_1__Hybrid_Hen:
+        width: 1536
+        height: 864
+        labels: 0
+        data:
+                - source: ~/media/4_1__Hybrid_Sub_02.mov
+                  options:
+                          - test-a
+                          - trim 360:-1
+        generate:
+                model: 4_1__Hybrid
+                options:
+                        - codec prores
+
+#
+# Motion transfers: training
+#
+
 2_0__MT_Daria:
         width: 1024
         height: 1280
@@ -193,6 +388,10 @@ mt_daria2_heni3:
                 options:
                         - codec prores
 
+#
+# Motion transfers: transfers
+#
+
 3_0__MT_Hen_to_Daria:
         width: 1024
         height: 1280
@@ -203,31 +402,44 @@ mt_daria2_heni3:
                           - label-with openpose
                           - no-label-face
                           - directory-prefix test
-        normalize:
-                target: 2_0__MT_Daria
-                options:
-                        - zthreshold 0.5
+        normalize: false
         generate:
                 model: 2_0__MT_Daria
                 options:
+                        - which_epoch 30
                         - codec prores
+                        - fps 59.94
+3_0__MT_Hen_to_Hen:
+        width: 1024
+        height: 1280
+        labels: 26
+        data:
+                - source: ~/media/3.0_FBvar-instructions_Hen_C0365.mp4
+                  options:
+                          - label-with openpose
+                          - no-label-face
+                          - directory-prefix test
+        normalize: false
+        generate:
+                model: 2_0__MT_Hen
+                options:
+                        - codec prores
+                        - fps 59.94
 3_1__MT_Hen_to_Daria:
         width: 1024
         height: 1280
         labels: 26
         data:
-                - source: ~/media/2.0_FBVar_Hen_C0364.mp4
+                - source: ~/media/2.0_FBvar_Hen_C0364.mp4
                   options:
                           - label-with openpose
                           - no-label-face
                           - directory-prefix test
-        normalize:
-                target: 2_0__MT_Daria
-                options:
-                        - zthreshold 0.5
+        normalize: false
         generate:
                 model: 2_0__MT_Daria
                 options:
+                        - which_epoch 30
                         - codec prores
 1_0__MT_Daria_to_Hen:
         width: 1024
@@ -239,10 +451,7 @@ mt_daria2_heni3:
                           - label-with openpose
                           - no-label-face
                           - directory-prefix test
-        normalize:
-                target: 2_0__MT_Hen
-                options:
-                        - zthreshold 0.5
+        normalize: false
         generate:
                 model: 2_0__MT_Hen
                 options:
@@ -257,14 +466,134 @@ mt_daria2_heni3:
                           - label-with openpose
                           - no-label-face
                           - directory-prefix test
-        normalize:
-                target: 2_0__MT_Hen
-                options:
-                        - zthreshold 0.5
+        normalize: false
         generate:
                 model: 2_0__MT_Hen
                 options:
                         - codec prores
+3_0__MT_Daria_to_Daria:
+        width: 1024
+        height: 1280
+        labels: 26
+        data:
+                - source: ~/media/3.0_MT_Isolations_Daria.mov
+                  options:
+                          - label-with openpose
+                          - no-label-face
+                          - directory-prefix test
+        normalize: false
+        generate:
+                model: 2_0__MT_Daria
+                options:
+                        - which_epoch 30
+                        - codec prores
+
+3_2__MT_Daria_to_Hen:
+        width: 1024
+        height: 1280
+        labels: 26
+        data:
+                - source: ~/media/3_2_MT_Isolation_Instructions_Daria.mov
+                  options:
+                          - label-with openpose
+                          - no-label-face
+                          - directory-prefix test
+        normalize: false
+        generate:
+                model: 2_0__MT_Hen
+                options:
+                        - codec prores
+3_2__MT_Daria_to_Daria:
+        width: 1024
+        height: 1280
+        labels: 26
+        data:
+                - source: ~/media/3_2_MT_Isolation_Instructions_Daria.mov
+                  options:
+                          - label-with openpose
+                          - no-label-face
+                          - directory-prefix test
+        normalize: false
+        generate:
+                model: 2_0__MT_Daria
+                options:
+                        - which_epoch 30
+                        - codec prores
+#
+# Motion Transfers: training videos
+#
+
+2_0__MT_Hen_to_Hen:
+        width: 1024
+        height: 1280
+        labels: 26
+        data:
+                - source: ~/media/2_0__MT_Training_Hen.mp4
+                  options:
+                          - subsample 10
+                          - label-with openpose
+                          - no-label-face
+                          - directory-prefix test
+        normalize: false
+        generate:
+                model: 2_0__MT_Hen
+                options:
+                        - codec prores
+2_0__MT_Hen_to_Daria:
+        width: 1024
+        height: 1280
+        labels: 26
+        data:
+                - source: ~/media/2_0__MT_Training_Hen.mp4
+                  options:
+                          - subsample 10
+                          - label-with openpose
+                          - no-label-face
+                          - directory-prefix test
+        normalize: false
+        generate:
+                model: 2_0__MT_Daria
+                options:
+                        - which_epoch 30
+                        - codec prores
+2_0__MT_Daria_to_Hen:
+        width: 1024
+        height: 1280
+        labels: 26
+        data:
+                - source: ~/media/2.0_MT_Training_Daria.mov
+                  options:
+                          - label-with openpose
+                          - no-label-face
+                          - directory-prefix test
+        normalize: false
+        generate:
+                model: 2_0__MT_Hen
+                options:
+                        - codec prores
+2_0__MT_Daria_to_Daria:
+        width: 1024
+        height: 1280
+        labels: 26
+        data:
+                - source: ~/media/2.0_MT_Training_Daria.mov
+                  options:
+                          - label-with openpose
+                          - no-label-face
+                          - directory-prefix test
+        normalize: false
+        generate:
+                model: 2_0__MT_Daria
+                options:
+                        - which_epoch 30
+                        - codec prores
+
+
+
+#
+# Synthetic transfers
+#
+
 SA_2_0__Synthetic_A_Daria:
         width: 1024
         height: 1280
@@ -277,6 +606,7 @@ SA_2_0__Synthetic_A_Daria:
         generate:
                 model: 2_0__MT_Daria
                 options:
+                        - which_epoch 30
                         - codec prores
 SA_2_0__Synthetic_A_Hen:
         width: 1024

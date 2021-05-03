@@ -73,6 +73,7 @@ def decimate_and_label_video(paths, labeller, limit=None, trim=(0.0, -1.0), subs
 
     frames_needed = (end_frame - start_frame) // subsample
     if (
+            subsample_offset == 0 and
             frames_needed == len(os.listdir(str(paths.img_dir))) and
             (
                 labeller is None or
