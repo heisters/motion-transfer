@@ -53,73 +53,90 @@ def label_images(paths, normalize=False):
 
             yield image, image_path, label_path, norm_path
 
-def build_label_colormap():
-    gammut = np.append(np.arange(1, 256, 1, dtype=np.uint8), [255]).reshape(256, 1)
+def build_label_colormap(offset):
+    start = 1 + offset
+    n = 256 - offset
+    gammut = np.append(np.arange(start, 256, 1, dtype=np.uint8), [255]).reshape(n, 1)
     cmap = np.dstack((gammut, gammut, gammut)).astype(np.uint8)
     return cmap
-
-def build_face_detector(paths, exclude_landmarks=None):
-    face_detector = dlib.cnn_face_detection_model_v1(str(paths.dlib_face_detector))
-    face_predictor = dlib.shape_predictor(str(paths.dlib_face_landmarks))
-
-    landmarks = face_utils.FACIAL_LANDMARKS_IDXS.copy()
-    if exclude_landmarks is not None:
-        for name in exclude_landmarks:
-            del landmarks[name]
-
-    return (face_detector, face_predictor, landmarks)
-
-def visualize_facial_landmarks(image, shape, colors, landmarks, alpha=0.75):
-    # create two copies of the input image -- one for the
-    # overlay and one for the final output image
-    overlay = image.copy()
-    output = image.copy()
-
-    # loop over the facial landmark regions individually
-    for (i, name) in enumerate(landmarks.keys()):
-        # grab the (x, y)-coordinates associated with the
-        # face landmark
-        (j, k) = landmarks[name]
-        pts = shape[j:k]
-
-        # check if are supposed to draw the jawline
-        if name == "jaw":
-            # since the jawline is a non-enclosed facial region,
-            # just draw lines between the (x, y)-coordinates
-            for l in range(1, len(pts)):
-                ptA = tuple(pts[l - 1])
-                ptB = tuple(pts[l])
-                cv.line(overlay, ptA, ptB, colors[i], 2)
-
-        # otherwise, compute the convex hull of the facial
-        # landmark coordinates points and display it
-        else:
-            hull = cv.convexHull(pts)
-            cv.drawContours(overlay, [hull], -1, colors[i], -1)
-
-    # apply the transparent overlay
-    cv.addWeighted(overlay, alpha, output, 1 - alpha, 0, output)
-
-    # return the output image
-    return output
-
-
-def label_face(face_detector, face_predictor, landmarks, image, labels, face_colors):
-    gray = cv.cvtColor(image, cv.COLOR_BGR2GRAY)
-    face_rects = face_detector(gray, 1)
-    for (i, rect) in enumerate(face_rects):
-        shape = face_predictor(gray, rect.rect)
-        shape = face_utils.shape_to_np(shape)
-
-        labels = visualize_facial_landmarks(labels, shape, face_colors, landmarks, alpha=1.0)
-
-    return labels
-
 
 def pose_point_is_valid(point):
     return (point >= 0).all()
 
 
+class FaceLabeller(object):
+    def __init__(self, paths, cmap, label_base, exclude_landmarks=None):
+        self.detector, self.predictor, self.landmarks = self.build_face_detector(paths, exclude_landmarks=exclude_landmarks)
+        self.colors = self.build_face_label_colormap(cmap, label_base, len(self.landmarks))
+
+    def detect(self, image):
+        gray = cv.cvtColor(image, cv.COLOR_BGR2GRAY)
+        face_rects = self.detector(gray, 1)
+        faces = []
+        for (i, rect) in enumerate(face_rects):
+            face = self.predictor(gray, rect.rect)
+            face = face_utils.shape_to_np(face, dtype=np.int32)
+            faces.append(face)
+
+        faces = np.array(faces, dtype=np.int32)
+        return faces
+
+    def label(self, image, labels):
+        for face in self.detect(image):
+
+            labels = self.visualize_facial_landmarks(labels, face, alpha=1.0)
+
+        return labels
+
+    @classmethod
+    def build_face_label_colormap(self, cmap, base, nlabels):
+        return [tuple(map(int, r[0])) for r in cmap[base : base + nlabels]]
+
+    @classmethod
+    def build_face_detector(self, paths, exclude_landmarks=None):
+        face_detector = dlib.cnn_face_detection_model_v1(str(paths.dlib_face_detector))
+        face_predictor = dlib.shape_predictor(str(paths.dlib_face_landmarks))
+
+        landmarks = face_utils.FACIAL_LANDMARKS_IDXS.copy()
+        if exclude_landmarks is not None:
+            for name in exclude_landmarks:
+                del landmarks[name]
+
+        return (face_detector, face_predictor, landmarks)
+
+    def visualize_facial_landmarks(self, image, face, alpha=0.75):
+        # create two copies of the input image -- one for the
+        # overlay and one for the final output image
+        overlay = image.copy()
+        output = image.copy()
+
+        # loop over the facial landmark regions individually
+        for (i, name) in enumerate(self.landmarks.keys()):
+            # grab the (x, y)-coordinates associated with the
+            # face landmark
+            (j, k) = self.landmarks[name]
+            pts = face[j:k]
+
+            # check if are supposed to draw the jawline
+            if name == "jaw":
+                # since the jawline is a non-enclosed facial region,
+                # just draw lines between the (x, y)-coordinates
+                for l in range(1, len(pts)):
+                    ptA = tuple(pts[l - 1])
+                    ptB = tuple(pts[l])
+                    cv.line(overlay, ptA, ptB, self.colors[i], 2)
+
+            # otherwise, compute the convex hull of the facial
+            # landmark coordinates points and display it
+            else:
+                hull = cv.convexHull(pts)
+                cv.drawContours(overlay, [hull], -1, self.colors[i], -1)
+
+        # apply the transparent overlay
+        cv.addWeighted(overlay, alpha, output, 1 - alpha, 0, output)
+
+        # return the output image
+        return output
 
 class Labeller(object):
     Strategies = Enum('Strategies', 'densepose openpose')
@@ -130,30 +147,33 @@ class Labeller(object):
         p.add_argument('--exclude-landmarks', help="CSV list of facial landmarks to exclude from the labels", type=str)
         p.add_argument('--label-face', help="Add labels for the face (default on)", dest='label_face', action='store_true')
         p.add_argument('--no-label-face', help="Do not add labels for the face", dest='label_face', action='store_false')
+        p.add_argument('--label-offset', help="Offset to add to all labels for combining datasets with different label ranges", type=int, default=0)
 
         p.set_defaults(label_face=True)
         return p
 
     @classmethod
-    def build_from_arguments(cls, args, paths):
+    def build_from_arguments(cls, args, paths, label_offset=None):
         exclude_landmarks = set(args.exclude_landmarks.split(',')) if args.exclude_landmarks is not None else None
         label_face = args.label_face
-        labeller = Labeller.build(Labeller.Strategies[args.label_with], paths, exclude_landmarks=exclude_landmarks, label_face=label_face)
+        label_offset = args.label_offset if label_offset is None else label_offset
+        labeller = Labeller.build(Labeller.Strategies[args.label_with], paths, exclude_landmarks=exclude_landmarks, label_face=label_face, label_offset=label_offset)
         return labeller
 
     @classmethod
-    def build(cls, strategy, paths, exclude_landmarks=None, label_face=True):
+    def build(cls, strategy, paths, exclude_landmarks=None, label_face=True, label_offset=0):
         if strategy == cls.Strategies.densepose:
-            return DenseposeLabeller(paths, exclude_landmarks=exclude_landmarks, label_face=label_face)
+            return DenseposeLabeller(paths, exclude_landmarks=exclude_landmarks, label_face=label_face, label_offset=label_offset)
         elif strategy == cls.Strategies.openpose:
-            return OpenposeLabeller(paths, exclude_landmarks=exclude_landmarks, label_face=label_face)
+            return OpenposeLabeller(paths, exclude_landmarks=exclude_landmarks, label_face=label_face, label_offset=label_offset)
         else:
             raise NotImplementedError("Unrecognized labeling strategy: {}".format(strategy))
 
 
 
 class DenseposeLabeller(Labeller):
-    def __init__(self, paths, exclude_landmarks=None, label_face=True):
+    num_points = 26
+    def __init__(self, paths, exclude_landmarks=None, label_face=True, label_offset=0):
 
         cfg = get_cfg()
         add_densepose_config(cfg)
@@ -163,14 +183,12 @@ class DenseposeLabeller(Labeller):
         cfg.freeze()
         self.pose_predictor = DefaultPredictor(cfg)
 
-        self.face_detector, self.face_predictor, self.landmarks = (None,None,None)
-        if label_face:
-            self.face_detector, self.face_predictor, self.landmarks = build_face_detector(paths, exclude_landmarks=exclude_landmarks)
+        cmap = build_label_colormap(label_offset)
 
-        self.cmap = build_label_colormap()
-        if self.face_detector is not None:
-            self.face_colors = [tuple(map(int, r[0])) for r in self.cmap[26 : 26 + len(self.landmarks)]]
-        self.visualizer = DensePoseMaskedColormapResultsVisualizer(_extract_i_from_iuvarr, _extract_i_from_iuvarr, cmap=self.cmap, alpha=1.0, val_scale=1.0)
+        if label_face:
+            self.face_labeller = FaceLabeller(paths, cmap, self.num_points, exclude_landmarks=exclude_landmarks)
+
+        self.visualizer = DensePoseMaskedColormapResultsVisualizer(_extract_i_from_iuvarr, _extract_i_from_iuvarr, cmap=cmap, alpha=1.0, val_scale=1.0)
         self.extractor = create_extractor(visualizer)
 
     def label_image(self, image, image_path, label_path, norm_path):
@@ -185,8 +203,8 @@ class DenseposeLabeller(Labeller):
             print("No pose detected for frame {}".format(image_path))
 
         # Face detection
-        if self.face_detector is not None:
-            labels = label_face(self.face_detector, self.face_predictor, self.landmarks, image, labels, self.face_colors)
+        if self.face_labeller is not None:
+            labels = self.face_labeller.label(image, labels)
 
         cv.imwrite(str(label_path), labels)
 
@@ -229,28 +247,23 @@ class OpenposeLabeller(Labeller):
                     [8, 12], [12, 13], [13, 14], 
                     [14, 19], [19, 20], [14, 21]]
 
-    def __init__(self, paths, exclude_landmarks=None, label_face=True):
+    def __init__(self, paths, exclude_landmarks=None, label_face=True, label_offset=0):
 
         self.net = cv.dnn.readNetFromCaffe(str(paths.pose_prototxt), str(paths.pose_model))
         self.net.setPreferableBackend(cv.dnn.DNN_BACKEND_CUDA)
         self.net.setPreferableTarget(cv.dnn.DNN_TARGET_CUDA)
 
-        self.face_detector, self.face_predictor, self.landmarks = (None,None,None)
+        self.cmap = build_label_colormap(label_offset)
         if label_face:
-            self.face_detector, self.face_predictor, self.landmarks = build_face_detector(paths, exclude_landmarks=exclude_landmarks)
+            self.face_labeller = FaceLabeller(paths, self.cmap, self.num_points, exclude_landmarks=exclude_landmarks)
 
+    def draw_labels(self, cvimg, points):
+        for li, (a, b) in enumerate(self.point_pairs):
+            label = (int(self.cmap[li][0][0]), int(self.cmap[li][0][1]), int(self.cmap[li][0][2]))
 
-        self.cmap = build_label_colormap()
-        if self.face_detector is not None:
-            self.face_colors = [tuple(map(int, r[0])) for r in self.cmap[self.num_points : self.num_points + len(self.landmarks)]]
-
-    @classmethod
-    def draw_labels(cls, cvimg, points):
-        for label, (a, b) in enumerate(cls.point_pairs, start=1):
             pa = points[a]
             pb = points[b]
             if pose_point_is_valid(pa) and pose_point_is_valid(pb):
-                #cv.line(cvimg, tuple(pa), tuple(pb), label, 3)
                 coords = np.array([pa, pb])
                 center = tuple(np.round(np.mean(coords, 0)).astype(int))
                 D = pa - pb
@@ -258,6 +271,8 @@ class OpenposeLabeller(Labeller):
                 angle = math.degrees(math.atan2(D[1], D[0]))
                 poly = cv.ellipse2Poly(center, (int(L / 2), 4), int(angle), 0, 360, 1)
                 cv.fillConvexPoly(cvimg, poly, label)
+
+        return cvimg
 
     def detect_pose(self, image):
         iw = image.shape[1]
@@ -299,8 +314,8 @@ class OpenposeLabeller(Labeller):
         self.draw_labels(labels, points)
 
         # Face detection
-        if self.face_detector is not None:
-            labels = label_face(self.face_detector, self.face_predictor, self.landmarks, image, labels, self.face_colors)
+        if self.face_labeller is not None:
+            labels = self.face_labeller.label(image, labels)
 
         center = None
         if crop is not None:

@@ -273,70 +273,6 @@ mt_daria2_heni3:
                 options:
                         - codec prores
 
-4_1__Hybrid:
-        width: 1536
-        height: 864
-        labels: 0
-        data:
-                - source: ~/media/4_1__Hybrid_Sub_01.mov
-                  options:
-                          - train-a
-                          - subsample 4
-                          - trim 0:360
-                - source: ~/media/4_1__Hybrid_Sub_02.mov
-                  options:
-                          - train-a
-                          - subsample 4
-                          - subsample-offset 1
-                          - trim 0:360
-                - source: ~/media/4_1__Hybrid_Sub_01.mov
-                  options:
-                          - train-b
-                          - subsample 4
-                          - subsample-offset 2
-                          - trim 0:360
-                - source: ~/media/4_1__Hybrid_Sub_02.mov
-                  options:
-                          - train-b
-                          - subsample 4
-                          - subsample-offset 3
-                          - trim 0:360
-        normalize: false
-        train:
-                global:
-                        epochs: 14
-                        options:
-                                - no_flip
-                local:
-                        epochs: 24
-                        options:
-                                - no_flip
-4_1__Hybrid_Daria:
-        width: 1536
-        height: 864
-        labels: 0
-        data:
-                - source: ~/media/4_1__Hybrid_Sub_01.mov
-                  options:
-                          - test-a
-                          - trim 360:-1
-        generate:
-                model: 4_1__Hybrid
-                options:
-                        - codec prores
-4_1__Hybrid_Hen:
-        width: 1536
-        height: 864
-        labels: 0
-        data:
-                - source: ~/media/4_1__Hybrid_Sub_02.mov
-                  options:
-                          - test-a
-                          - trim 360:-1
-        generate:
-                model: 4_1__Hybrid
-                options:
-                        - codec prores
 
 #
 # Motion transfers: training
@@ -388,6 +324,55 @@ mt_daria2_heni3:
                 options:
                         - codec prores
 
+4_1__Hybrid:
+        width: 1536
+        height: 864
+        labels: 68
+        # FIXME: this data is borked
+        data:
+                - source: ~/media/4_1__Hybrid_Sub_01.mov
+                  options:
+                          - label-with openpose
+                          - label-face
+                          - label-offset 0
+                          - trim 0:360
+                          - subsample 4
+                - source: ~/media/4_1__Hybrid_Sub_02.mov
+                  options:
+                          # ^ seconds * fps / subsample
+                          - frame-offset 2880
+                          - label-with openpose
+                          - label-face
+                          - label-offset 34
+                          - trim 0:360
+                          - subsample 4
+                - source: ~/media/4_1__Hybrid_Sub_01.mov
+                  options:
+                          - directory-prefix test
+                          - label-with openpose
+                          - label-face
+                          - label-offset 0
+                          - trim 360:420
+                - source: ~/media/4_1__Hybrid_Sub_02.mov
+                  options:
+                          - directory-prefix test
+                          # ^ seconds * fps / subsample
+                          - frame-offset 2880
+                          - label-with openpose
+                          - label-face
+                          - label-offset 34
+                          - trim 360:420
+
+        train:
+                global:
+                        epochs: 5
+                        options:
+                                - no_flip
+                local:
+                        epochs: 10
+                        options:
+                                - no_flip
+        generate: true
 #
 # Motion transfers: transfers
 #
@@ -599,9 +584,10 @@ SA_2_0__Synthetic_A_Daria:
         height: 1280
         labels: 26
         synthesize:
-                input: data/2_0__MT_Daria/train_img/00000.png
-                nframes: 720
+                script: synthesis/arm_rotation.py
                 options:
+                        - nframes 720
+                        - input data/2_0__MT_Daria/train_img/00000.png
                         - no-label-face
         generate:
                 model: 2_0__MT_Daria
@@ -613,11 +599,46 @@ SA_2_0__Synthetic_A_Hen:
         height: 1280
         labels: 26
         synthesize:
-                input: data/2_0__MT_Daria/train_img/00000.png
-                nframes: 720
+                script: synthesis/arm_rotation.py
                 options:
+                        - nframes 720
+                        - input data/2_0__MT_Daria/train_img/00000.png
                         - no-label-face
         generate:
                 model: 2_0__MT_Hen
                 options:
                         - codec prores
+
+4_1__Hybrid_half_and_half:
+        width: 1536
+        height: 864
+        labels: 68
+        data:
+                - source: ~/media/4_1__Hybrid_Sub_01.mov
+                  options:
+                          - directory-prefix base
+                          - label-with openpose
+                          - label-face
+                          - label-offset 0
+                          - trim 360:420
+                - source: ~/media/4_1__Hybrid_Sub_02.mov
+                  options:
+                          - directory-prefix base
+                          # ^ seconds * fps / subsample
+                          - frame-offset 1440
+                          - label-with openpose
+                          - label-face
+                          - label-offset 34
+                          - trim 360:420
+        synthesize:
+                script: synthesis/half_and_half_face.py
+                options:
+                          - label-with openpose
+                          - label-face
+                          - label-offset 34
+                          - nframes 1440
+                          - frame-offset 1440
+        generate:
+                model: 4_1__Hybrid
+                options:
+                        - codec x264

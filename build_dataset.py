@@ -33,6 +33,7 @@ def parse_arguments():
     p.add_argument('--train-a', help="Put images in the train_A directory for non-label training", action='store_true')
     p.add_argument('--train-b', help="Put images in the train_B directory for non-label training", action='store_true')
     p.add_argument('--test-a', help="Put images in the test_A directory for non-label training", action='store_true')
+    p.add_argument('--frame-offset', help="Offset all frame numbers by this number", type=int, default=0)
 
     p.set_defaults(normalize=False)
 
@@ -75,7 +76,8 @@ decimate_and_label_video(
         resize=resize,
         crop=crop,
         flip=flip,
-        normalize=normalize)
+        normalize=normalize,
+        frame_offset=args.frame_offset)
 
 
 #    nimgs = len(os.listdir(paths.img_dir))

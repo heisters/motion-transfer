@@ -69,6 +69,9 @@ for i, data in enumerate(tqdm(dataset)):
     img_nda = util.tensor2im(inferred.data[0])
     img_pil = Image.fromarray(img_nda)
     img_pil.save(fn)
+    del inferred
+    del img_nda
+    del img_pil
 
 
 if not video_path.exists():

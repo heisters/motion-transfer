@@ -58,7 +58,7 @@ def crop_frame(image, dims, center):
 
     return o
 
-def decimate_and_label_video(paths, labeller, limit=None, trim=(0.0, -1.0), subsample=1, subsample_offset=0, resize=None, crop=None, flip=None, normalize=False):
+def decimate_and_label_video(paths, labeller, limit=None, trim=(0.0, -1.0), subsample=1, subsample_offset=0, resize=None, crop=None, flip=None, normalize=False, frame_offset=0):
     cap = cv.VideoCapture(str(paths.input))
     if not cap.isOpened():
         raise Exception("could not open input {}".format(paths.input))
@@ -67,11 +67,11 @@ def decimate_and_label_video(paths, labeller, limit=None, trim=(0.0, -1.0), subs
     if limit is not None: nframes = min(nframes, limit)
     fps = float(cap.get(cv.CAP_PROP_FPS))
 
-    start_frame = int(fps * trim[0])
-    end_frame = nframes if trim[1] < 0.0 else max(start_frame + 1, int(fps * trim[1]))
+    start_frame = int(fps * trim[0]) + 1
+    end_frame = nframes if trim[1] < 0.0 else max(start_frame + 1, int(fps * trim[1]) + 1)
 
 
-    frames_needed = (end_frame - start_frame) // subsample
+    frames_needed = (end_frame - start_frame) // subsample + frame_offset
     if (
             subsample_offset == 0 and
             frames_needed == len(os.listdir(str(paths.img_dir))) and
@@ -84,18 +84,18 @@ def decimate_and_label_video(paths, labeller, limit=None, trim=(0.0, -1.0), subs
             ) and
             (not normalize or frames_needed == len(os.listdir(str(paths.norm_dir))))
        ):
-        print("Found %d frames, skipping." % (end_frame - start_frame))
+        print("Found %d frames, skipping." % frames_needed)
         return
 
 
     cap.set(cv.CAP_PROP_POS_FRAMES, start_frame)
 
-    for i in tqdm(range(end_frame - start_frame)):
+    for i in tqdm(range(start_frame, end_frame, subsample)):
         # do this here to increment frame counter, regardless of whether the file exists
-        if not cap.grab(): break
-        if (i + subsample_offset) % subsample != 0: continue
+        while cap.get(cv.CAP_PROP_POS_FRAMES) < i:
+            if not cap.grab(): raise Exception('could not grab frame')
 
-        image_path, label_path, norm_path = data_paths_for_idx(paths, i, normalize=normalize)
+        image_path, label_path, norm_path = data_paths_for_idx(paths, i + frame_offset, normalize=normalize)
 
         if not image_path.exists() or not label_path.exists() or ( norm_path is not None and not norm_path.exists() ):
             success, frame = cap.retrieve()

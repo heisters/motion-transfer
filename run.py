@@ -127,13 +127,11 @@ if 'train_local' in only and "train" in config and "local" in config["train"]:
 #
 if 'synthesize' in only and 'synthesize' in config:
     synthesize = config['synthesize']
+    script = synthesize['script']
     data = synthesize.get('data', name)
-    iput = synthesize["input"]
-    nframes = synthesize["nframes"]
     options = build_options(synthesize.get('options'))
     options = " ".join(options)
-    commands.append("./synthesize_movement.py --dataroot data/{} --input {} --nframes {} {}".format(
-        data, iput, nframes, options))
+    commands.append("{} --dataroot data/{} {}".format(script, data, options))
 
 #
 # Generation
@@ -141,9 +139,15 @@ if 'synthesize' in only and 'synthesize' in config:
 
 if 'generate' in only and 'generate' in config:
     generate = config['generate']
-    data = generate.get('data', name)
-    model = generate.get('model', name)
-    options = build_options(generate.get('options'))
+    try:
+        options = generate.get('options')
+        data = generate.get('data', name)
+        model = generate.get('model', name)
+    except (AttributeError, TypeError):
+        options = None
+        data = name
+        model = name
+    options = build_options(options)
     options = " ".join(options)
     commands.append("./generate_video.py --dataroot data/{} --name {}_local --results_name {} "
             "--label_nc {} --no_instance --fp16 --netG local --fineSize {} "
