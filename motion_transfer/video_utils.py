@@ -8,6 +8,7 @@ from enum import Enum
 from .paths import data_paths_for_idx
 
 Codec = Enum('Codec', 'x264 prores')
+CropCenter = Enum('CropCenter', 'frame body face')
 
 def video_filename_for_codec(path, codec):
     if codec == Codec.x264:
@@ -58,7 +59,7 @@ def crop_frame(image, dims, center):
 
     return o
 
-def decimate_and_label_video(paths, labeller, limit=None, trim=(0.0, -1.0), subsample=1, subsample_offset=0, resize=None, crop=None, flip=None, normalize=False, frame_offset=0):
+def decimate_and_label_video(paths, labeller, limit=None, trim=(0.0, -1.0), subsample=1, subsample_offset=0, resize=None, crop=None, crop_center=CropCenter.body, flip=None, normalize=False, frame_offset=0):
     cap = cv.VideoCapture(str(paths.input))
     if not cap.isOpened():
         raise Exception("could not open input {}".format(paths.input))
@@ -90,12 +91,12 @@ def decimate_and_label_video(paths, labeller, limit=None, trim=(0.0, -1.0), subs
 
     cap.set(cv.CAP_PROP_POS_FRAMES, start_frame)
 
-    for i in tqdm(range(start_frame, end_frame, subsample)):
+    for f in tqdm(range(start_frame, end_frame, subsample)):
         # do this here to increment frame counter, regardless of whether the file exists
-        while cap.get(cv.CAP_PROP_POS_FRAMES) < i:
+        while cap.get(cv.CAP_PROP_POS_FRAMES) < f:
             if not cap.grab(): raise Exception('could not grab frame')
 
-        image_path, label_path, norm_path = data_paths_for_idx(paths, i + frame_offset, normalize=normalize)
+        image_path, label_path, norm_path = data_paths_for_idx(paths, f + frame_offset, normalize=normalize)
 
         if not image_path.exists() or not label_path.exists() or ( norm_path is not None and not norm_path.exists() ):
             success, frame = cap.retrieve()
@@ -106,7 +107,7 @@ def decimate_and_label_video(paths, labeller, limit=None, trim=(0.0, -1.0), subs
 
             center = None
             if labeller is not None:
-                center = labeller.label_image(frame, image_path, label_path, norm_path, resize=resize, crop=crop)
+                center = labeller.label_image(frame, image_path, label_path, norm_path, resize=resize, crop=crop, crop_center=crop_center)
 
             if center is not None:
                 frame = crop_frame(frame, crop, center)

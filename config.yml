@@ -325,42 +325,53 @@ mt_daria2_heni3:
                         - codec prores
 
 4_1__Hybrid:
-        width: 1536
-        height: 864
+        width: 1024
+        height: 1024
         labels: 68
-        # FIXME: this data is borked
         data:
                 - source: ~/media/4_1__Hybrid_Sub_01.mov
+                  resize: 1344x1344
+                  crop: true
                   options:
                           - label-with openpose
                           - label-face
                           - label-offset 0
+                          - crop-center face
                           - trim 0:360
-                          - subsample 4
+                          - subsample 2
                 - source: ~/media/4_1__Hybrid_Sub_02.mov
+                  resize: 1344x1344
+                  crop: true
                   options:
-                          # ^ seconds * fps / subsample
-                          - frame-offset 2880
+                          # ^ seconds * fps
+                          - frame-offset 8640
                           - label-with openpose
                           - label-face
                           - label-offset 34
+                          - crop-center face
                           - trim 0:360
-                          - subsample 4
+                          - subsample 2
                 - source: ~/media/4_1__Hybrid_Sub_01.mov
+                  resize: 1344x1344
+                  crop: true
                   options:
                           - directory-prefix test
                           - label-with openpose
                           - label-face
                           - label-offset 0
+                          - crop-center face
                           - trim 360:420
                 - source: ~/media/4_1__Hybrid_Sub_02.mov
+                  resize: 1344x1344
+                  crop: true
                   options:
                           - directory-prefix test
-                          # ^ seconds * fps / subsample
-                          - frame-offset 2880
+                          # ^ seconds * fps
+                          - frame-offset 1440
                           - label-with openpose
                           - label-face
                           - label-offset 34
+                          - crop-center face
                           - trim 360:420
 
         train:
@@ -610,25 +621,31 @@ SA_2_0__Synthetic_A_Hen:
                         - codec prores
 
 4_1__Hybrid_half_and_half:
-        width: 1536
-        height: 864
+        width: 1024
+        height: 1024
         labels: 68
         data:
                 - source: ~/media/4_1__Hybrid_Sub_01.mov
+                  resize: 1344x1344
+                  crop: true
                   options:
                           - directory-prefix base
                           - label-with openpose
                           - label-face
                           - label-offset 0
+                          - crop-center face
                           - trim 360:420
                 - source: ~/media/4_1__Hybrid_Sub_02.mov
+                  resize: 1344x1344
+                  crop: true
                   options:
                           - directory-prefix base
-                          # ^ seconds * fps / subsample
+                          # ^ seconds * fps
                           - frame-offset 1440
                           - label-with openpose
                           - label-face
                           - label-offset 34
+                          - crop-center face
                           - trim 360:420
         synthesize:
                 script: synthesis/half_and_half_face.py
@@ -636,6 +653,62 @@ SA_2_0__Synthetic_A_Hen:
                           - label-with openpose
                           - label-face
                           - label-offset 34
+                          - nframes 1440
+                          - frame-offset 1440
+        generate:
+                model: 4_1__Hybrid
+                options:
+                        - codec x264
+4_1__Hybrid_face_xfer_daria_to_hen:
+        width: 1024
+        height: 1024
+        labels: 68
+        data:
+                - source: ~/media/4_1__Hybrid_Sub_01.mov
+                  resize: 1344x1344
+                  crop: true
+                  options:
+                          - directory-prefix base
+                          - label-with openpose
+                          - label-face
+                          - label-offset 0
+                          - crop-center face
+                          - trim 360:420
+        synthesize:
+                script: synthesis/face_puppet.py
+                options:
+                          - label-with openpose
+                          - label-face
+                          - label-offset 0
+                          - target-label-offset 34
+                          - nframes 1440
+                          - frame-offset 1440
+        generate:
+                model: 4_1__Hybrid
+                options:
+                        - codec x264
+4_1__Hybrid_face_xfer_hen_to_daria:
+        width: 1024
+        height: 1024
+        labels: 68
+        data:
+                - source: ~/media/4_1__Hybrid_Sub_02.mov
+                  resize: 1344x1344
+                  crop: true
+                  options:
+                          - directory-prefix base
+                          - label-with openpose
+                          - label-face
+                          - label-offset 0
+                          - crop-center face
+                          - trim 360:420
+        synthesize:
+                script: synthesis/face_puppet.py
+                options:
+                          - label-with openpose
+                          - label-face
+                          - label-offset 34
+                          - target-label-offset 0
                           - nframes 1440
                           - frame-offset 1440
         generate:

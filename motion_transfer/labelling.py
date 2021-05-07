@@ -8,7 +8,8 @@ from enum import Enum
 from imutils import face_utils
 import sys
 from .paths import data_paths
-from .video_utils import crop_frame
+from .video_utils import crop_frame, CropCenter
+from .face import Face
 
 import detectron2
 from detectron2.utils.logger import setup_logger
@@ -69,6 +70,9 @@ class FaceLabeller(object):
         self.detector, self.predictor, self.landmarks = self.build_face_detector(paths, exclude_landmarks=exclude_landmarks)
         self.colors = self.build_face_label_colormap(cmap, label_base, len(self.landmarks))
 
+    def shape_to_face(self, shape):
+        return Face(self.landmarks, shape)
+
     def detect(self, image):
         gray = cv.cvtColor(image, cv.COLOR_BGR2GRAY)
         face_rects = self.detector(gray, 1)
@@ -81,8 +85,9 @@ class FaceLabeller(object):
         faces = np.array(faces, dtype=np.int32)
         return faces
 
-    def label(self, image, labels):
-        for face in self.detect(image):
+    def label(self, image, labels, faces=None):
+        if faces is None: faces = self.detect(image)
+        for face in faces:
 
             labels = self.visualize_facial_landmarks(labels, face, alpha=1.0)
 
@@ -301,7 +306,7 @@ class OpenposeLabeller(Labeller):
         points = np.array(points, dtype=np.int32)
         return points
 
-    def label_image(self, image, image_path, label_path, norm_path, resize=None, crop=None):
+    def label_image(self, image, image_path, label_path, norm_path, resize=None, crop=None, crop_center=CropCenter.body):
         labels = np.zeros(image.shape, dtype=np.uint8)
 
         iw = image.shape[1]
@@ -314,13 +319,26 @@ class OpenposeLabeller(Labeller):
         self.draw_labels(labels, points)
 
         # Face detection
+        faces = None
         if self.face_labeller is not None:
-            labels = self.face_labeller.label(image, labels)
+            faces = self.face_labeller.detect(image)
+            labels = self.face_labeller.label(image, labels, faces=faces)
 
         center = None
         if crop is not None:
-            center = np.ma.masked_less(points, 0).mean(axis=0)
-            if center.all() is np.ma.masked: center = np.array([iw / 2, ih / 2])
+
+            if crop_center is CropCenter.body:
+                center = np.ma.masked_less(points, 0).mean(axis=0)
+                if center.all() is np.ma.masked: center = None
+            elif crop_center is CropCenter.frame:
+                center = None # take care of it with failsafe below
+            elif crop_center is CropCenter.face and faces is not None:
+                for face in faces:
+                    face = self.face_labeller.shape_to_face(face)
+                    center = np.mean(face.nose, axis=0)
+
+            if center is None:
+                center = np.array([iw / 2, ih / 2])
             center = list(center.round().astype(int))
             points = points - center + [crop[0]/2,crop[1]/2]
             labels = crop_frame(labels, crop, center)

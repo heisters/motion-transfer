@@ -51,8 +51,8 @@ for i in tqdm(range(0,args.nframes)):
     if base_image_b is None:
         raise Exception("could not read image: {}".format(path_base_image_b))
 
-    faces_a = [Face(labeller_a.face_labeller.landmarks, f) for f in labeller_a.face_labeller.detect(base_image_a)]
-    faces_b = [Face(labeller_b.face_labeller.landmarks, f) for f in labeller_b.face_labeller.detect(base_image_b)]
+    faces_a = [labeller_a.face_labeller.shape_to_face(f) for f in labeller_a.face_labeller.detect(base_image_a)]
+    faces_b = [labeller_b.face_labeller.shape_to_face(f) for f in labeller_b.face_labeller.detect(base_image_b)]
     pose_a = Pose(labeller_a.detect_pose(base_image_a))
     pose_b = Pose(labeller_b.detect_pose(base_image_b))
 
