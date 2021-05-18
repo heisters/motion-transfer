@@ -2,7 +2,7 @@ Motion Transfer
 ===============
 
 A set of tools that help train and run motion transfer models. Based on
-[Everbody Dance Now](https://carolineec.github.io/everybody_dance_now/)(2019),
+[Everbody Dance Now](https://carolineec.github.io/everybody_dance_now/) (2019),
 these tools facilitate the labelling of input video, tuning of training
 parameters, training, and synthesis of video.
 
