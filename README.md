@@ -6,6 +6,8 @@ A set of tools that help train and run motion transfer models. Based on
 these tools facilitate the labelling of input video, tuning of training
 parameters, training, and synthesis of video.
 
+![Transfer Example](/doc/deepfake-study-5.gif)
+
 Overview
 --------
 
