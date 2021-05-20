@@ -6,6 +6,10 @@ A set of tools that help train and run motion transfer models. Based on
 these tools facilitate the labelling of input video, tuning of training
 parameters, training, and synthesis of video.
 
+This is an example of running a transfer from one subject to the other, trained
+for 52 epochs on an NVIDIA RTX 2080 Ti without normalization or refinement of
+the faces.
+
 ![Transfer Example](/doc/deepfake-study-5.gif)
 
 Overview
