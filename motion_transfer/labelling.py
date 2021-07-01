@@ -109,7 +109,7 @@ class FaceLabeller(object):
 
         return (face_detector, face_predictor, landmarks)
 
-    def visualize_facial_landmarks(self, image, face, alpha=0.75):
+    def visualize_facial_landmarks(self, image, shape, alpha=0.75):
         # create two copies of the input image -- one for the
         # overlay and one for the final output image
         overlay = image.copy()
@@ -120,7 +120,7 @@ class FaceLabeller(object):
             # grab the (x, y)-coordinates associated with the
             # face landmark
             (j, k) = self.landmarks[name]
-            pts = face[j:k]
+            pts = shape[j:k]
 
             # check if are supposed to draw the jawline
             if name == "jaw":
