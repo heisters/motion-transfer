@@ -1,4 +1,5 @@
 from .base_options import BaseOptions
+from .options import add_motion_transfer_options
 
 # edited version of TestOptions
 class VideoOptions(BaseOptions):
@@ -22,4 +23,5 @@ class VideoOptions(BaseOptions):
         self.parser.add_argument('--codec', choices=['x264', 'prores'], default='x264')
         self.parser.add_argument('--output-suffix', type=str, help='Append the provided suffix to the output directory and file', default='')
         self.isTrain = False
+        add_motion_transfer_options(self.parser)
 

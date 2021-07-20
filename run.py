@@ -95,7 +95,7 @@ if 'train_global' in only and "train" in config and "global" in config["train"]:
     options = " ".join(options)
 
     commands.append("./train.py --dataroot data/{} --name {}_global "
-            "--num_D 3 --label_nc {} --no_instance --fp16 --netG global --loadSize {:.0f} --fineSize {:.0f} "
+            "--model pix2pixHDts --num_D 3  --label_nc {} --no_instance --fp16 --netG global --loadSize {:.0f} --fineSize {:.0f} "
             "--niter {} --niter_decay {} "
             "--resize_or_crop scale_width {}".format(
                 data, name, labels, width / 2, width / 2, niter, niter_decay, options))
@@ -108,16 +108,16 @@ if 'train_local' in only and "train" in config and "local" in config["train"]:
     niter = ceil(train["epochs"] / 2)
     niter_decay = train["epochs"] - niter
     niter_fix_global = ceil(train["epochs"] / 5)
-    local_ngf = train.get('ngf', local_ngf)
+    ngf = train.get('ngf', local_ngf)
     options = build_options(train.get('options'))
     if os.path.exists("checkpoints/{}_local/latest_net_G.pth".format(name)): options.append('--continue_train')
-    options.append('--ngf {}'.format(local_ngf))
+    options.append('--ngf {}'.format(ngf))
 
 
     options = " ".join(options)
 
     commands.append("./train.py --dataroot data/{} --name {}_local "
-            "--num_D 3 --label_nc {} --no_instance --fp16 --netG local --loadSize {} --fineSize {} "
+            "--model pix2pixHDts --num_D 3 --label_nc {} --no_instance --fp16 --netG local --loadSize {} --fineSize {} "
             "--niter {} --niter_decay {} --niter_fix_global {} "
             "--resize_or_crop none --load_pretrain checkpoints/{}_global {}".format(
                 data, name, labels, width, width, niter, niter_decay, niter_fix_global, name, options))
@@ -139,6 +139,7 @@ if 'synthesize' in only and 'synthesize' in config:
 
 if 'generate' in only and 'generate' in config:
     generate = config['generate']
+    ngf = generate.get('ngf', local_ngf)
     try:
         options = generate.get('options')
         data = generate.get('data', name)
@@ -150,9 +151,9 @@ if 'generate' in only and 'generate' in config:
     options = build_options(options)
     options = " ".join(options)
     commands.append("./generate_video.py --dataroot data/{} --name {}_local --results_name {} "
-            "--label_nc {} --no_instance --fp16 --netG local --fineSize {} "
+            "--model pix2pixHDts --label_nc {} --no_instance --fp16 --netG local --fineSize {} "
             "--ngf {} --resize_or_crop none {}".format(
-                data, model, name, labels, width, local_ngf, options))
+                data, model, name, labels, width, ngf, options))
 
 command = " && \\\n".join(commands)
 

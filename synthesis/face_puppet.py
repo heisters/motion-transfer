@@ -58,19 +58,21 @@ for i in tqdm(range(0,args.nframes)):
     for face in faces:
         fcenter = np.mean(face.nose, axis=0)
 
-        offset = center - fcenter
+        #offset = center - fcenter
 
-        for (name, shape) in face.shapes():
-            face[name] = shape + offset
+        #for (name, shape) in face.shapes():
+        #    face[name] = shape + offset
 
         labels = labeller.face_labeller.visualize_facial_landmarks(labels, face.shape, alpha=1.0)
         labels_t = labeller_t.face_labeller.visualize_facial_landmarks(labels_t, face.shape, alpha=1.0)
 
-    points = np.where(pose.points >= 0, pose.points + offset, pose.points)
+    #points = np.where(pose.points >= 0, pose.points + offset, pose.points)
+    points = pose.points
     labels = labeller.draw_labels(labels, points)
     labels_t = labeller_t.draw_labels(labels_t, points)
 
-    center_x = int(center[0])
-    labels[:,center_x:] = labels_t[:,center_x:]
+    #center_x = int(center[0])
+    #labels[:,center_x:] = labels_t[:,center_x:]
 
-    cv.imwrite(str(path_out_label), labels)
+    #cv.imwrite(str(path_out_label), labels)
+    cv.imwrite(str(path_out_label), labels_t)

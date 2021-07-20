@@ -4,4 +4,4 @@ results/
 models/
 *.pyc
 __pycache__
-config.yml
+/*.yml

@@ -13,10 +13,17 @@ def lcm(a,b): return abs(a * b)/fractions.gcd(a,b) if a and b else 0
 from motion_transfer.train_options import TrainOptions
 
 sys.path.append('./vendor/pix2pixHD/')
-from data.data_loader import CreateDataLoader
-from models.models import create_model
+from motion_transfer.data_loader import CreateDataLoader
+from motion_transfer.models import create_model
 import util.util as util
 from util.visualizer import Visualizer
+
+
+#os.environ['CUDA_VISIBLE_DEVICES']='0'
+#os.environ['GPU_DEBUG']='0'
+#from gpu_profile import gpu_profile
+#sys.settrace(gpu_profile)
+
 
 opt = TrainOptions().parse()
 iter_path = os.path.join(opt.checkpoints_dir, opt.name, 'iter.txt')
@@ -25,11 +32,11 @@ if opt.continue_train:
         start_epoch, epoch_iter = np.loadtxt(iter_path , delimiter=',', dtype=int)
     except:
         start_epoch, epoch_iter = 1, 0
-    print('Resuming from epoch %d at iteration %d' % (start_epoch, epoch_iter))        
-else:    
+    print('Resuming from epoch %d at iteration %d' % (start_epoch, epoch_iter))
+else:
     start_epoch, epoch_iter = 1, 0
 
-opt.print_freq = lcm(opt.print_freq, opt.batchSize)    
+opt.print_freq = lcm(opt.print_freq, opt.batchSize)
 if opt.debug:
     opt.display_freq = 1
     opt.print_freq = 1
@@ -44,9 +51,9 @@ print('#training images = %d' % dataset_size)
 
 model = create_model(opt)
 visualizer = Visualizer(opt)
-if opt.fp16:    
+if opt.fp16:
     from apex import amp
-    model, [optimizer_G, optimizer_D] = amp.initialize(model, [model.optimizer_G, model.optimizer_D], opt_level='O1')             
+    model, [optimizer_G, optimizer_D] = amp.initialize(model, [model.optimizer_G, model.optimizer_D], opt_level='O1')
     model = torch.nn.DataParallel(model, device_ids=opt.gpu_ids)
 else:
     optimizer_G, optimizer_D = model.module.optimizer_G, model.module.optimizer_D
@@ -56,6 +63,109 @@ total_steps = (start_epoch-1) * dataset_size + epoch_iter
 display_delta = total_steps % opt.display_freq
 print_delta = total_steps % opt.print_freq
 save_delta = total_steps % opt.save_latest_freq
+
+
+def forward_pass(model, data, opt, save_fake):
+    if opt.model == 'pix2pixHD':
+
+        vl, vinst, vi, vf = Variable(data['label']), Variable(data['inst']), Variable(data['image']), Variable(data['feat'])
+
+        return model(vl, vinst, vi, vf, infer=save_fake)
+
+    elif opt.model == 'pix2pixHDts':
+
+        cond_zeros = torch.zeros(data['label'].size())
+        if opt.fp16:
+            cond_zeros = cond_zeros.half()
+        else:
+            cond_zeros = cond_zeros.float()
+
+        vl, vn, vi = Variable(data['label']), Variable(data['next_label']), Variable(data['image'])
+        vni, vf, vz = Variable(data['next_image']), Variable(data['face_coords']), Variable(cond_zeros)
+
+        return model(vl, vn, vi, vni, vf, vz, infer=save_fake)
+
+def calculate_losses(loss_dict, opt):
+    loss_D, loss_G = None, None
+    if opt.model == 'pix2pixHD':
+
+        loss_D = (loss_dict['D_fake'] + loss_dict['D_real']) * 0.5
+        loss_G = loss_dict['G_GAN'] + loss_dict.get('G_GAN_Feat',0) + loss_dict.get('G_VGG',0)
+
+    elif opt.model == 'pix2pixHDts':
+
+        loss_D = (loss_dict['D_fake'] + loss_dict['D_real']) * 0.5 + (loss_dict['D_realface'] + loss_dict['D_fakeface']) * 0.5
+        loss_G = loss_dict['G_GAN'] + loss_dict['G_GAN_Feat'] + loss_dict['G_VGG'] + loss_dict['G_GANface']
+
+    return loss_D, loss_G
+
+def backward_pass(loss_G, loss_D, optimizer_G, optimizer_D, opt):
+    # update generator weights
+    optimizer_G.zero_grad()
+    if opt.fp16:
+        with amp.scale_loss(loss_G, optimizer_G) as scaled_loss: scaled_loss.backward()
+    else:
+        loss_G.backward()
+    optimizer_G.step()
+
+    # update discriminator weights
+    optimizer_D.zero_grad()
+    if opt.fp16:
+        with amp.scale_loss(loss_D, optimizer_D) as scaled_loss: scaled_loss.backward()
+    else:
+        loss_D.backward()
+    optimizer_D.step()
+
+
+def visualize(data, generated, opt):
+    if opt.model == 'pix2pixHD':
+
+        visuals = OrderedDict([('input_label', util.tensor2label(data['label'][0], opt.label_nc)),
+                               ('synthesized_image', util.tensor2im(generated.data[0])),
+                               ('real_image', util.tensor2im(data['image'][0]))])
+        visualizer.display_current_results(visuals, epoch, total_steps)
+
+    elif opt.model == 'pix2pixHDts':
+
+        syn = generated[0].data[0]
+        inputs = torch.cat((data['label'], data['next_label']), dim=3)
+        targets = torch.cat((data['image'], data['next_image']), dim=3)
+        visuals = OrderedDict([('input_label', util.tensor2im(inputs[0], normalize=False)),
+                                   ('synthesized_image', util.tensor2im(syn)),
+                                   ('real_image', util.tensor2im(targets[0]))])
+        if opt.face_generator: #display face generator on tensorboard
+            miny, maxy, minx, maxx = data['face_coords'][0]
+            res_face = generated[2].data[0]
+            syn_face = generated[1].data[0]
+            preres = generated[3].data[0]
+            visuals = OrderedDict([('input_label', util.tensor2im(inputs[0], normalize=False)),
+                                   ('synthesized_image', util.tensor2im(syn)),
+                                   ('synthesized_face', util.tensor2im(syn_face)),
+                                   ('residual', util.tensor2im(res_face)),
+                                   ('real_face', util.tensor2im(data['image'][0][:, miny:maxy, minx:maxx])),
+                                   # ('pre_residual', util.tensor2im(preres)),
+                                   # ('pre_residual_face', util.tensor2im(preres[:, miny:maxy, minx:maxx])),
+                                   ('input_face', util.tensor2im(data['label'][0][:, miny:maxy, minx:maxx], normalize=False)),
+                                   ('real_image', util.tensor2im(targets[0]))])
+        visualizer.display_current_results(visuals, epoch, total_steps)
+
+
+def execute_pass(model, data, optimizer_G, optimizer_D, opt, save_fake):
+    ############## Forward Pass ######################
+    losses, generated = forward_pass(model, data, opt, save_fake)
+
+    # sum per device losses
+    losses = [ torch.mean(x) if not isinstance(x, int) else x for x in losses ]
+    loss_dict = dict(zip(model.module.loss_names, losses))
+
+    # calculate final loss scalar
+    loss_D, loss_G = calculate_losses(loss_dict, opt)
+
+    ############### Backward Pass ####################
+    backward_pass(loss_G, loss_D, optimizer_G, optimizer_D, opt)
+
+    return loss_dict, generated
+
 
 for epoch in range(start_epoch, opt.niter + opt.niter_decay + 1):
     epoch_start_time = time.time()
@@ -70,75 +180,54 @@ for epoch in range(start_epoch, opt.niter + opt.niter_decay + 1):
         # whether to collect output images
         save_fake = total_steps % opt.display_freq == display_delta
 
-        ############## Forward Pass ######################
-        losses, generated = model(Variable(data['label']), Variable(data['inst']), 
-                                  Variable(data['image']), Variable(data['feat']), infer=save_fake)
 
-        # sum per device losses
-        losses = [ torch.mean(x) if not isinstance(x, int) else x for x in losses ]
-        loss_dict = dict(zip(model.module.loss_names, losses))
+        if 'next_label' not in data or data['next_label'].dim() > 1:
+            loss_dict, generated = execute_pass(model, data, optimizer_G, optimizer_D, opt, save_fake)
 
-        # calculate final loss scalar
-        loss_D = (loss_dict['D_fake'] + loss_dict['D_real']) * 0.5
-        loss_G = loss_dict['G_GAN'] + loss_dict.get('G_GAN_Feat',0) + loss_dict.get('G_VGG',0)
+            ############## Display results and errors ##########
+            ### print out errors
+            if total_steps % opt.print_freq == print_delta:
+                errors = {k: v.data.item() if not isinstance(v, int) else v for k, v in loss_dict.items()}
+                t = (time.time() - iter_start_time) / opt.print_freq
+                visualizer.print_current_errors(epoch, epoch_iter, errors, t)
+                visualizer.plot_current_errors(errors, total_steps)
+                #call(["nvidia-smi", "--format=csv", "--query-gpu=memory.used,memory.free"])
 
-        ############### Backward Pass ####################
-        # update generator weights
-        optimizer_G.zero_grad()
-        if opt.fp16:                                
-            with amp.scale_loss(loss_G, optimizer_G) as scaled_loss: scaled_loss.backward()                
-        else:
-            loss_G.backward()          
-        optimizer_G.step()
+            ### display output images
+            if save_fake:
+                visualize(data, generated, opt)
 
-        # update discriminator weights
-        optimizer_D.zero_grad()
-        if opt.fp16:                                
-            with amp.scale_loss(loss_D, optimizer_D) as scaled_loss: scaled_loss.backward()                
-        else:
-            loss_D.backward()        
-        optimizer_D.step()        
-
-        ############## Display results and errors ##########
-        ### print out errors
-        if total_steps % opt.print_freq == print_delta:
-            errors = {k: v.data.item() if not isinstance(v, int) else v for k, v in loss_dict.items()}            
-            t = (time.time() - iter_start_time) / opt.print_freq
-            visualizer.print_current_errors(epoch, epoch_iter, errors, t)
-            visualizer.plot_current_errors(errors, total_steps)
-            #call(["nvidia-smi", "--format=csv", "--query-gpu=memory.used,memory.free"]) 
-
-        ### display output images
-        if save_fake:
-            visuals = OrderedDict([('input_label', util.tensor2label(data['label'][0], opt.label_nc)),
-                                   ('synthesized_image', util.tensor2im(generated.data[0])),
-                                   ('real_image', util.tensor2im(data['image'][0]))])
-            visualizer.display_current_results(visuals, epoch, total_steps)
 
         ### save latest model
         if total_steps % opt.save_latest_freq == save_delta:
             print('saving the latest model (epoch %d, total_steps %d)' % (epoch, total_steps))
-            model.module.save('latest')            
+            model.module.save('latest')
             np.savetxt(iter_path, (epoch, epoch_iter), delimiter=',', fmt='%d')
 
         if epoch_iter >= dataset_size:
             break
-       
-    # end of epoch 
+
+    # end of epoch
     iter_end_time = time.time()
     print('End of epoch %d / %d \t Time Taken: %d sec' %
           (epoch, opt.niter + opt.niter_decay, time.time() - epoch_start_time))
 
     ### save model for this epoch
     if epoch % opt.save_epoch_freq == 0:
-        print('saving the model at the end of epoch %d, iters %d' % (epoch, total_steps))        
+        print('saving the model at the end of epoch %d, iters %d' % (epoch, total_steps))
         model.module.save('latest')
         model.module.save(epoch)
         np.savetxt(iter_path, (epoch+1, 0), delimiter=',', fmt='%d')
 
     ### instead of only training the local enhancer, train the entire network after certain iterations
     if (opt.niter_fix_global != 0) and (epoch == opt.niter_fix_global):
+        print('------------- finetuning Local + Global generators jointly -------------')
         model.module.update_fixed_params()
+
+    ### instead of only training the face discriminator, train the entire network after certain iterations
+    if opt.model == 'pix2pixHDts' and (opt.niter_fix_main != 0) and (epoch == opt.niter_fix_main):
+        print('------------- traing all the discriminators now and not just the face -------------')
+        model.module.update_fixed_params_netD()
 
     ### linearly decay learning rate after certain iterations
     if epoch > opt.niter:

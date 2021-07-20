@@ -10,10 +10,10 @@ from motion_transfer.paths import build_paths
 from motion_transfer.video_options import VideoOptions
 from motion_transfer.video_utils import video_from_frame_directory, video_filename_for_codec, Codec
 
+from motion_transfer.data_loader import CreateDataLoader
+from motion_transfer.models import create_model
 # pix2pixHD imports
 sys.path.append('./vendor/pix2pixHD/')
-from models.models import create_model
-from data.data_loader import CreateDataLoader
 import util.util as util
 
 
@@ -51,6 +51,7 @@ frame_dir.mkdir(parents=True, exist_ok=True)
 
 model = create_model(args)
 
+prev = None
 
 for i, data in enumerate(tqdm(dataset)):
     fn = frame_dir / ("frame-%s.png" % str(i + 1).zfill(6))
@@ -58,20 +59,31 @@ for i, data in enumerate(tqdm(dataset)):
 
     if args.how_many is not None and i >= args.how_many:
         break
+
+    if prev is None:
+        prev = torch.zeros(data['label'].size())
+
     if args.data_type == 16:
         data['label'] = data['label'].half()
         data['inst']  = data['inst'].half()
+        prev = prev.half()
     elif args.data_type == 8:
         data['label'] = data['label'].uint8()
         data['inst']  = data['inst'].uint8()
+        prev = prev.uint8()
 
-    inferred = model.inference(data['label'], data['inst'], data['image'])
+    with torch.no_grad():
+        inferred = model.inference(data['label'], prev, None)#data['face_coords'])
     img_nda = util.tensor2im(inferred.data[0])
     img_pil = Image.fromarray(img_nda)
     img_pil.save(fn)
+
+    prev = inferred.data
+
     del inferred
     del img_nda
     del img_pil
+
 
 
 if not video_path.exists():
