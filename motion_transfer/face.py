@@ -1,9 +1,12 @@
 from imutils import face_utils
+import numpy as np
 
 class Face(object):
-    def __init__(self, landmarks, shape):
+    def __init__(self, landmarks, shape, rect, confidence):
         super().__setattr__('landmarks', landmarks)
         super().__setattr__('shape', shape)
+        super().__setattr__('rect', rect)
+        super().__setattr__('confidence', confidence)
 
     def __getattr__(self, attr):
         if attr in self.landmarks:
@@ -39,4 +42,29 @@ class Face(object):
         for name in self.landmarks.keys():
             (j,k) = self.landmarks[name]
             yield (name, self.shape[j:k])
-        
+
+    def center(self):
+        return np.mean(self.nose, axis=0)
+
+
+    def padded_bounds(self, osize, *, w, h):
+        c = self.center()
+        minx, miny, maxx, maxy = self.rect.left(), self.rect.top(), self.rect.right(), self.rect.bottom()
+        rectw = maxx - minx
+        recth = maxy - miny
+        dw = osize - rectw
+        dh = osize - recth
+
+        if dw < 0 or dh < 0:
+            raise RuntimeError("face rectangle {}x{} is larger than configured face size".format(rectw, recth))
+
+        maxx = min(maxx + dw // 2, w)
+        minx = max(maxx - osize, 0)
+        maxx += osize - (maxx - minx)
+
+        maxy = min(maxy + dh // 2, h)
+        miny = max(maxy - osize, 0)
+        maxy += osize - (maxx - minx)
+
+        return minx, miny, maxx, maxy
+

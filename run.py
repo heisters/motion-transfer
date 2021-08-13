@@ -13,7 +13,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("name", help="the name of the configuration to load from the file provided")
 parser.add_argument("--config", default="config.yml", help="path to the config YAML file")
 parser.add_argument("--dry-run", help="print the command to be executed and exit", action='store_true')
-parser.add_argument("--only", help="Comma separated list of commands to run from data, normalize, train_global, train_local, synthesize, and generate. Defaults to all.", default="data,normalize,train_global,train_local,synthesize,generate")
+parser.add_argument("--only", help="Comma separated list of commands to run from data, normalize, train_global, train_local, train_face, synthesize, and generate. Defaults to all.", default="data,normalize,train_global,train_local,train_face,synthesize,generate")
 args = parser.parse_args()
 
 only = set(tuple(args.only.split(',')))
@@ -122,6 +122,26 @@ if 'train_local' in only and "train" in config and "local" in config["train"]:
             "--resize_or_crop none --load_pretrain checkpoints/{}_global {}".format(
                 data, name, labels, width, width, niter, niter_decay, niter_fix_global, name, options))
 
+if 'train_face' in only and "train" in config and "face" in config["train"]:
+    # face
+    train = config["train"]["face"]
+    data = train.get('data', name)
+    niter = train["epochs"]
+    facesize = train["size"]
+    ngf = train.get('ngf', local_ngf)
+    options = build_options(train.get('options'))
+    if os.path.exists("checkpoints/{}_face/latest_net_G.pth".format(name)): options.append('--continue_train')
+    options.append('--ngf {}'.format(ngf))
+
+
+    options = " ".join(options)
+
+    commands.append("./train.py --dataroot data/{} --name {}_face "
+            "--model pix2pixHDts --num_D 3 --label_nc {} --no_instance --fp16 --netG local --loadSize {} --fineSize {} "
+            "--niter {} --face "
+            "--resize_or_crop none --load_pretrain checkpoints/{}_local {}".format(
+                data, name, labels, facesize, facesize, niter, name, options))
+
 #
 # Synthesis
 #
@@ -139,6 +159,7 @@ if 'synthesize' in only and 'synthesize' in config:
 
 if 'generate' in only and 'generate' in config:
     generate = config['generate']
+    stage = 'local'
     ngf = generate.get('ngf', local_ngf)
     try:
         options = generate.get('options')
@@ -148,12 +169,16 @@ if 'generate' in only and 'generate' in config:
         options = None
         data = name
         model = name
+    face = generate.get('face', False)
     options = build_options(options)
+    if face:
+        options.append('--face')
+        stage = 'face'
     options = " ".join(options)
-    commands.append("./generate_video.py --dataroot data/{} --name {}_local --results_name {} "
+    commands.append("./generate_video.py --dataroot data/{} --name {}_{} --results_name {} "
             "--model pix2pixHDts --label_nc {} --no_instance --fp16 --netG local --fineSize {} "
             "--ngf {} --resize_or_crop none {}".format(
-                data, model, name, labels, width, ngf, options))
+                data, model, stage, name, labels, width, ngf, options))
 
 command = " && \\\n".join(commands)
 

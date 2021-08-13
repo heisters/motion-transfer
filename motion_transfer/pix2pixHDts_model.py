@@ -19,11 +19,13 @@ import torch
 import os
 from collections import OrderedDict
 from torch.autograd import Variable
+import torch.nn as nn
 import util.util as util
 from util.image_pool import ImagePool
 from models.base_model import BaseModel
-from models import networks
+from . import networks
 import sys
+
 
 class Pix2PixHDtsModel(BaseModel):
     def name(self):
@@ -57,26 +59,20 @@ class Pix2PixHDtsModel(BaseModel):
                                           opt.num_D, not opt.no_ganFeat_loss, gpu_ids=self.gpu_ids)
 
         # Face discriminator network
-        if self.isTrain and opt.face_discrim:
+        if self.isTrain and opt.face:
             use_sigmoid = opt.no_lsgan
             netD_input_nc = 2*opt.output_nc
             if not opt.no_instance:
                 netD_input_nc += 1
-            self.netDface = networks.define_D(netD_input_nc, opt.ndf, opt.n_layers_D, opt.norm, use_sigmoid,
-                                          1, not opt.no_ganFeat_loss, gpu_ids=self.gpu_ids, netD='face')
+            self.netDface = networks.define_D_face(netD_input_nc, opt.ndf,
+                    opt.n_layers_D, opt.norm, use_sigmoid, 1, not
+                    opt.no_ganFeat_loss, gpu_ids=self.gpu_ids)
 
         #Face residual network
-        if opt.face_generator:
-            if opt.faceGtype == 'unet':
-                self.faceGen = networks.define_G(opt.output_nc*2, opt.output_nc, 32, 'unet',
-                                          n_downsample_global=2, n_blocks_global=5, n_local_enhancers=0,
-                                          n_blocks_local=0, norm=opt.norm, gpu_ids=self.gpu_ids)
-            elif opt.faceGtype == 'global':
-                self.faceGen = networks.define_G(opt.output_nc*2, opt.output_nc, 64, 'global',
-                                      n_downsample_global=3, n_blocks_global=5, n_local_enhancers=0,
-                                      n_blocks_local=0, norm=opt.norm, gpu_ids=self.gpu_ids)
-            else:
-                raise('face generator not implemented!')
+        if opt.face:
+            self.faceGen = networks.define_G(opt.output_nc*2, opt.output_nc, 64, 'global',
+                                  n_downsample_global=3, n_blocks_global=5, n_local_enhancers=0,
+                                  n_blocks_local=0, norm=opt.norm, gpu_ids=self.gpu_ids)
 
         print('---------- Networks initialized -------------')
 
@@ -86,9 +82,9 @@ class Pix2PixHDtsModel(BaseModel):
             self.load_network(self.netG, 'G', opt.which_epoch, pretrained_path)
             if self.isTrain:
                 self.load_network(self.netD, 'D', opt.which_epoch, pretrained_path)
-                if opt.face_discrim:
+                if opt.face:
                     self.load_network(self.netDface, 'Dface', opt.which_epoch, pretrained_path)
-            if opt.face_generator:
+            if opt.face:
                 self.load_network(self.faceGen, 'Gface', opt.which_epoch, pretrained_path)
 
         # set loss functions and optimizers
@@ -130,7 +126,7 @@ class Pix2PixHDtsModel(BaseModel):
             else:
                 params = list(self.netG.parameters())
 
-            if opt.face_generator:
+            if opt.face:
                 params = list(self.faceGen.parameters())
             else:
                 if opt.niter_fix_main == 0:
@@ -139,11 +135,11 @@ class Pix2PixHDtsModel(BaseModel):
             self.optimizer_G = torch.optim.Adam(params, lr=opt.lr, betas=(opt.beta1, 0.999))
 
             # optimizer D
-            if opt.niter_fix_main > 0:
-                print('------------- Only training the face discriminator network (for %d epochs) ------------' % opt.niter_fix_main)
+            if opt.niter > 0 and opt.face:
+                print('------------- Only training the face discriminator network (for %d epochs) ------------' % opt.niter)
                 params = list(self.netDface.parameters())
             else:
-                if opt.face_discrim:
+                if opt.face:
                     params = list(self.netD.parameters()) + list(self.netDface.parameters())
                 else:
                     params = list(self.netD.parameters())
@@ -222,13 +218,16 @@ class Pix2PixHDtsModel(BaseModel):
         else:
             return self.netDface.forward(input_concat)
 
-    def training_inference(self, input_label, next_label, face_coords, zeroshere, infer=False):
 
-        if self.opt.face_discrim:
-            miny = face_coords.data[0][0]
-            maxy = face_coords.data[0][1]
-            minx = face_coords.data[0][2]
-            maxx = face_coords.data[0][3]
+    def forward(self, label, next_label, image, next_image, face_coords, zeroshere, infer=False):
+        input_label, real_image, next_label, next_image, zeroshere = self.encode_input(label, image,
+                     next_label=next_label, next_image=next_image, zeroshere=zeroshere)
+
+        if self.opt.face:
+            minx = face_coords[0][0]
+            miny = face_coords[0][1]
+            maxx = face_coords[0][2]
+            maxy = face_coords[0][3]
 
         initial_I_0 = 0
 
@@ -237,7 +236,7 @@ class Pix2PixHDtsModel(BaseModel):
 
         #face residual for I_0
         face_residual_0 = 0
-        if self.opt.face_generator:
+        if self.opt.face:
             initial_I_0 = self.netG.forward(input_concat)
             face_label_0 = input_label[:, :, miny:maxy, minx:maxx]
             face_residual_0 = self.faceGen.forward(torch.cat((face_label_0, initial_I_0[:, :, miny:maxy, minx:maxx]), dim=1))
@@ -251,7 +250,7 @@ class Pix2PixHDtsModel(BaseModel):
 
         #face residual for I_1
         face_residual_1 = 0
-        if self.opt.face_generator:
+        if self.opt.face:
             initial_I_1 = self.netG.forward(input_concat1)
             face_label_1 = next_label[:, :, miny:maxy, minx:maxx]
             face_residual_1 = self.faceGen.forward(torch.cat((face_label_1, initial_I_1[:, :, miny:maxy, minx:maxx]), dim=1))
@@ -260,22 +259,10 @@ class Pix2PixHDtsModel(BaseModel):
         else:
             I_1 = self.netG.forward(input_concat1)
 
-        return I_0, I_1, (initial_I_0 if infer else None)
-
-    def forward(self, label, next_label, image, next_image, face_coords, zeroshere, infer=False):
-        #from gpu_profile import gpu_profile
-        #gpu_profile(frame=sys._getframe(), event='line', arg=None)
-        input_label, real_image, next_label, next_image, zeroshere = self.encode_input(label, image,
-                     next_label=next_label, next_image=next_image, zeroshere=zeroshere)
-
-        #gpu_profile(frame=sys._getframe(), event='line', arg=None)
-        I_0, I_1, initial_I_0 = self.training_inference(input_label, next_label, face_coords, zeroshere, infer=infer)
-        #gpu_profile(frame=sys._getframe(), event='line', arg=None)
-
         loss_D_fake_face = loss_D_real_face = loss_G_GAN_face = 0
         fake_face_0 = fake_face_1 = real_face_0 = real_face_1 = 0
         fake_face = real_face = face_residual = 0
-        if self.opt.face_discrim:
+        if self.opt.face:
 
             fake_face_0 = I_0[:, :, miny:maxy, minx:maxx]
             fake_face_1 = I_1[:, :, miny:maxy, minx:maxx]
@@ -308,8 +295,7 @@ class Pix2PixHDtsModel(BaseModel):
             fake_face = torch.cat((fake_face_0, fake_face_1), dim=3)
             real_face = torch.cat((real_face_0, real_face_1), dim=3)
 
-            if self.opt.face_generator:
-                face_residual = torch.cat((face_residual_0, face_residual_1), dim=3)
+            face_residual = torch.cat((face_residual_0, face_residual_1), dim=3)
 
         # Fake Detection and Loss
         pred_fake_pool = self.discriminate_4(input_label, next_label, I_0, I_1, use_pool=True)
@@ -341,7 +327,7 @@ class Pix2PixHDtsModel(BaseModel):
             loss_G_VGG = loss_G_VGG0 + loss_G_VGG1
             if self.opt.netG == 'global': #need 2x VGG for artifacts when training local
                 loss_G_VGG *= 0.5
-            if self.opt.face_discrim:
+            if self.opt.face:
                 loss_G_VGG += 0.5 * self.criterionVGG(fake_face_0, real_face_0) * self.opt.lambda_feat
                 loss_G_VGG += 0.5 * self.criterionVGG(fake_face_1, real_face_1) * self.opt.lambda_feat
 
@@ -369,15 +355,14 @@ class Pix2PixHDtsModel(BaseModel):
     def save(self, which_epoch):
         self.save_network(self.netG, 'G', which_epoch, self.gpu_ids)
         self.save_network(self.netD, 'D', which_epoch, self.gpu_ids)
-        if self.opt.face_discrim:
-             self.save_network(self.netDface, 'Dface', which_epoch, self.gpu_ids)
-        if self.opt.face_generator:
+        if self.opt.face:
+            self.save_network(self.netDface, 'Dface', which_epoch, self.gpu_ids)
             self.save_network(self.faceGen, 'Gface', which_epoch, self.gpu_ids)
 
     def update_fixed_params(self):
         # after fixing the global generator for a number of iterations, also start finetuning it
         params = list(self.netG.parameters())
-        if self.opt.face_generator:
+        if self.opt.face:
             params += list(self.faceGen.parameters())
         self.optimizer_G = torch.optim.Adam(params, lr=self.opt.lr, betas=(self.opt.beta1, 0.999))
         print('------------ Now also finetuning global generator -----------')
@@ -402,11 +387,11 @@ class Pix2PixHDtsModel(BaseModel):
         # Encode Inputs        
         input_label, _, _, _, prevouts = self.encode_input(Variable(label), zeroshere=Variable(prevouts), infer=True)
 
-        if self.opt.face_generator:
-            miny = face_coords[0][0]
-            maxy = face_coords[0][1]
-            minx = face_coords[0][2]
-            maxx = face_coords[0][3]
+        if self.opt.face:
+            minx = face_coords[0][0]
+            miny = face_coords[0][1]
+            maxx = face_coords[0][2]
+            maxy = face_coords[0][3]
 
         """ new face """
         I_0 = 0
@@ -415,7 +400,7 @@ class Pix2PixHDtsModel(BaseModel):
         input_concat = torch.cat((input_label, prevouts), dim=1) 
         initial_I_0 = self.netG.forward(input_concat)
 
-        if self.opt.face_generator:
+        if self.opt.face:
             face_label_0 = input_label[:, :, miny:maxy, minx:maxx]
             face_residual_0 = self.faceGen.forward(torch.cat((face_label_0, initial_I_0[:, :, miny:maxy, minx:maxx]), dim=1))
             I_0 = initial_I_0.clone()

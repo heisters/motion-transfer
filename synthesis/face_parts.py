@@ -11,7 +11,6 @@ if __name__ == '__main__':
     sys.path.append(os.getcwd())
 from motion_transfer.paths import build_paths, data_paths_for_idx, create_directories
 from motion_transfer.labelling import Labeller
-from motion_transfer.face import Face
 from motion_transfer.pose import Pose
 
 def parse_arguments():
@@ -47,9 +46,9 @@ base_image_fns = sorted(os.listdir(paths_base.img_dir))
 
 for i in tqdm(range(0,args.nframes)):
     t = float(i) / float(args.nframes)
-    path_out_image, path_out_label, _ = data_paths_for_idx(paths_out, i)
+    paths = data_paths_for_idx(paths_out, i)
 
-    if path_out_label.exists():
+    if paths.label.exists():
         continue
 
     path_base_image = paths_base.img_dir / base_image_fns[i]
@@ -58,7 +57,7 @@ for i in tqdm(range(0,args.nframes)):
     if base_image is None:
         raise Exception("could not read image: {}".format(path_base_image))
 
-    faces = [labeller.face_labeller.shape_to_face(f) for f in labeller.face_labeller.detect(base_image)]
+    faces = labeller.face_labeller.detect(base_image)
     pose = Pose(labeller.detect_pose(base_image))
 
     labels = np.zeros(base_image.shape, dtype=np.uint8)
@@ -79,4 +78,4 @@ for i in tqdm(range(0,args.nframes)):
     points = np.where(pose.points >= 0, pose.points + offset, pose.points)
     labels = labeller.draw_labels(labels, points)
 
-    cv.imwrite(str(path_out_label), labels)
+    cv.imwrite(str(paths.label), labels)

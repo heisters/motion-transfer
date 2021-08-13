@@ -8,8 +8,12 @@ def CreateDataset(opt):
         from data.aligned_dataset import AlignedDataset
         dataset = AlignedDataset()
     elif opt.model == 'pix2pixHDts': 
-        from .aligned_paired_dataset import AlignedPairedDataset
-        dataset = AlignedPairedDataset()
+        if opt.face:
+            from .aligned_paired_dataset import AlignedPairedFaceDataset
+            dataset = AlignedPairedFaceDataset()
+        else:
+            from .aligned_paired_dataset import AlignedPairedDataset
+            dataset = AlignedPairedDataset()
 
     print("dataset [%s] was created" % (dataset.name()))
     dataset.initialize(opt)

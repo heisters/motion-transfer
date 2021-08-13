@@ -59,7 +59,7 @@ def crop_frame(image, dims, center):
 
     return o
 
-def decimate_and_label_video(paths, labeller, limit=None, trim=(0.0, -1.0), subsample=1, subsample_offset=0, resize=None, crop=None, crop_center=CropCenter.body, flip=None, normalize=False, frame_offset=0):
+def decimate_and_label_video(paths, labeller, limit=None, trim=(0.0, -1.0), subsample=1, subsample_offset=0, resize=None, crop=None, crop_center=CropCenter.body, flip=None, normalize=False, frame_offset=0, face_size=128):
     cap = cv.VideoCapture(str(paths.input))
     if not cap.isOpened():
         raise Exception("could not open input {}".format(paths.input))
@@ -96,9 +96,9 @@ def decimate_and_label_video(paths, labeller, limit=None, trim=(0.0, -1.0), subs
         while cap.get(cv.CAP_PROP_POS_FRAMES) < f:
             if not cap.grab(): raise Exception('could not grab frame')
 
-        image_path, label_path, norm_path = data_paths_for_idx(paths, f + frame_offset, normalize=normalize)
+        dpaths = data_paths_for_idx(paths, f + frame_offset, normalize=normalize)
 
-        if not image_path.exists() or not label_path.exists() or ( norm_path is not None and not norm_path.exists() ):
+        if not dpaths.image.exists() or not dpaths.label.exists() or ( dpaths.norm is not None and not dpaths.norm.exists() ) or not dpaths.face.exists():
             success, frame = cap.retrieve()
             if not success: break
 
@@ -107,10 +107,20 @@ def decimate_and_label_video(paths, labeller, limit=None, trim=(0.0, -1.0), subs
 
             center = None
             if labeller is not None:
-                center = labeller.label_image(frame, image_path, label_path, norm_path, resize=resize, crop=crop, crop_center=crop_center)
+                labels = labeller.label_image(frame, resize=resize, crop=crop, crop_center=crop_center)
+                cv.imwrite(str(dpaths.label), labels.img)
+                if dpaths.norm is not None:
+                    np.save(dpaths.norm, labels.points)
+                center = labels.center
+                if labels.faces is not None and len(labels.faces) >= 1:
+                    with open(str(dpaths.face), 'w') as f:
+                        w, h = frame.shape[1], frame.shape[0]
+                        minx, miny, maxx, maxy = labels.faces[0].padded_bounds(face_size, w=w, h=h)
+                        f.write("{} {} {} {}".format(minx, miny, maxx, maxy))
+
 
             if center is not None:
                 frame = crop_frame(frame, crop, center)
 
 
-            cv.imwrite(str(image_path), frame)
+            cv.imwrite(str(dpaths.image), frame)

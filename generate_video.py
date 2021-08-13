@@ -73,7 +73,7 @@ for i, data in enumerate(tqdm(dataset)):
         prev = prev.uint8()
 
     with torch.no_grad():
-        inferred = model.inference(data['label'], prev, None)#data['face_coords'])
+        inferred = model.inference(data['label'], prev, data['face_coords'])
     img_nda = util.tensor2im(inferred.data[0])
     img_pil = Image.fromarray(img_nda)
     img_pil.save(fn)

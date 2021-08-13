@@ -22,4 +22,5 @@ class TrainOptions(P2PTrainOptions):
         self.parser.add_argument('--lambda_A', type=float, default=10.0, help='weight for cycle loss (A -> B -> A)')
         self.parser.add_argument('--lambda_F', type=float, default=1.0, help='weight flow loss')
 
-
+        # for face training
+        self.parser.add_argument('--face', action='store_true', help='train face model')

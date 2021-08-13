@@ -98,13 +98,11 @@ project requires three configuration parameters:
   divisible by 32 but preserves a given aspect ratio, you can run
   `resize_divisible_by.py`
 * `labels` is the number of labels in your training data, and depends on
-  whether you are labelling with OpenPose or DensePose, labelling faces, and/or
-  including multiple distinct people/label spaces in your data. **If you are
-  building an unlabelled model (straight RGB values), this should be set to
-  0.** Otherwise, the values are:
+  whether you are labelling labelling faces, and/or including multiple distinct
+  people/label spaces in your data. **If you are building an unlabelled model
+  (straight RGB values), this should be set to 0.** Otherwise, the values are:
 
   * OpenPose: 26 (25 labels + 1 for "nothing")
-  * DensePose: 27
   * Faces: add 8
 
 

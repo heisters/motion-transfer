@@ -29,6 +29,7 @@ def parse_arguments():
 
     p = Labeller.add_arguments(p)
 
+    p.add_argument('--face-size', help='The size (squared) of faces extracted to train the face network', type=int, default=128)
     p.add_argument('--directory-prefix', help='Image and label directory prefixes for label training', default='train')
     p.add_argument('--no-label', help='Disable labeling', action='store_true')
     p.add_argument('--train-a', help="Put images in the train_A directory for non-label training", action='store_true')
@@ -80,9 +81,7 @@ decimate_and_label_video(
         crop_center=crop_center,
         flip=flip,
         normalize=normalize,
-        frame_offset=args.frame_offset)
+        frame_offset=args.frame_offset,
+        face_size=args.face_size)
 
 
-#    nimgs = len(os.listdir(paths.img_dir))
-#    if (len(os.listdir(paths.label_dir)) >= nimgs or (normalize and paths.denorm_label_dir.exists() and len(os.listdir(paths.denorm_label_dir)) >= nimgs)) and (not normalize or len(os.listdir(paths.norm_dir)) >= nimgs):
-#        print("{} labels found, skipping.".format(nimgs))

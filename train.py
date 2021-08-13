@@ -47,7 +47,7 @@ if opt.debug:
 data_loader = CreateDataLoader(opt)
 dataset = data_loader.load_data()
 dataset_size = len(data_loader)
-print('#training images = %d' % dataset_size)
+print('#training images = {}'.format(dataset_size))
 
 model = create_model(opt)
 visualizer = Visualizer(opt)
@@ -133,8 +133,8 @@ def visualize(data, generated, opt):
         visuals = OrderedDict([('input_label', util.tensor2im(inputs[0], normalize=False)),
                                    ('synthesized_image', util.tensor2im(syn)),
                                    ('real_image', util.tensor2im(targets[0]))])
-        if opt.face_generator: #display face generator on tensorboard
-            miny, maxy, minx, maxx = data['face_coords'][0]
+        if opt.face: #display face generator on tensorboard
+            minx, miny, maxx, maxy = data['face_coords'][0]
             res_face = generated[2].data[0]
             syn_face = generated[1].data[0]
             preres = generated[3].data[0]
